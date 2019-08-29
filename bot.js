@@ -80,6 +80,9 @@ bot.command('subscribe', function (ctx) {
             else {
                 ctx.reply('Sie sind beriets registriert');
             }
+            setTimeout(function () {
+                Bot.sendToUserClassUpdate(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id']);
+            }, 1000);
         });
     }
     //subscribe
@@ -94,7 +97,13 @@ bot.command('subscribe', function (ctx) {
                 ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
             }
         });
-        ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+        setTimeout(function () {
+            ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+            setTimeout(function () {
+                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+            }, 500);
+        }, 500);
     }
 });
 bot.command('unsubscribe', function (ctx) {
@@ -108,6 +117,15 @@ bot.command('1', function (ctx) {
 //send plan 2 from storage
 bot.command('2', function (ctx) {
     Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+});
+bot.command('class', function (ctx) {
+    Bot.readFileToArray(subscriberPath).then(function (arr) {
+        arr.forEach(function (data) {
+            if ("" + data.split(' ')[0] === "" + ctx['update']['message']['from']['id']) {
+                Bot.sendToUserClassUpdate(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
+            }
+        });
+    });
 });
 bot.launch();
 var Bot = /** @class */ (function () {
@@ -334,24 +352,31 @@ var Bot = /** @class */ (function () {
      */
     Bot.updateClass = function (update) {
         Bot.readFileToArray(subscriberPath).then(function (arr) {
-            arr.forEach((function (user) {
-                var subscribedClass = user.split(' ')[1];
-                var userId = user.split(' ')[0];
-                var data = [];
-                if (update == 3 || update == 2) {
-                    data = data.concat(Bot.formatClassData(false, subscribedClass));
-                }
-                if (update == 3 || update == 1) {
-                    data = data.concat(Bot.formatClassData(true, subscribedClass));
-                }
-                if (data) {
-                    data.forEach(function (x) {
-                        if (x)
-                            bot.telegram.sendMessage(userId, x);
-                    });
-                }
-            }));
+            arr.forEach(function (user) {
+                Bot.sendToUserClassUpdate(update, user.split(' ')[1], user.split(' ')[0]);
+            });
         });
+    };
+    /**
+     * send class update to user
+     * @param {number} update
+     * @param {string} subscribedClass
+     * @param {string} userId
+     */
+    Bot.sendToUserClassUpdate = function (update, subscribedClass, userId) {
+        var data = [];
+        if (update == 3 || update == 2) {
+            data = data.concat(Bot.formatClassData(false, subscribedClass));
+        }
+        if (update == 3 || update == 1) {
+            data = data.concat(Bot.formatClassData(true, subscribedClass));
+        }
+        if (data) {
+            data.forEach(function (x) {
+                if (x)
+                    bot.telegram.sendMessage(userId, x);
+            });
+        }
     };
     Bot.formatClassData = function (today, subscribedClass) {
         var rawdata = fs.readFileSync(__dirname + '/' + (today ? 1 : 2) + '.json');

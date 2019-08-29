@@ -49,8 +49,10 @@ bot.command('subscribe', ctx => {
             } else {
                 ctx.reply('Sie sind beriets registriert');
             }
+            setTimeout(() => {
+                Bot.sendToUserClassUpdate(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id'])
+            }, 1000)
         });
-
     }
     //subscribe
     else {
@@ -63,7 +65,13 @@ bot.command('subscribe', ctx => {
                 ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
             }
         });
-        ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+        setTimeout(() => {
+            ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+            setTimeout(() => {
+                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+            }, 500)
+        }, 500);
     }
 });
 
@@ -80,6 +88,16 @@ bot.command('1', (ctx) => {
 //send plan 2 from storage
 bot.command('2', (ctx) => {
     Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+});
+
+bot.command('class',(ctx)=>{
+    Bot.readFileToArray(subscriberPath).then(arr => {
+        arr.forEach(data => {
+            if(`${data.split(' ')[0]}` === `${ctx['update']['message']['from']['id']}`){
+                Bot.sendToUserClassUpdate(3, data.split(' ')[1], ctx['update']['message']['from']['id'])
+            }
+        });
+    });
 });
 
 bot.launch();
@@ -320,24 +338,32 @@ class Bot {
      */
     static updateClass(update: number) {
         Bot.readFileToArray(subscriberPath).then(arr => {
-            arr.forEach((user => {
-                let subscribedClass = user.split(' ')[1];
-                let userId = user.split(' ')[0];
-                let data = [];
-                if (update == 3 || update == 2) {
-                    data = data.concat(Bot.formatClassData(false, subscribedClass));
-                }
-                if (update == 3 || update == 1) {
-                    data = data.concat(Bot.formatClassData(true, subscribedClass));
-                }
-                if (data) {
-                    data.forEach(x => {
-                        if (x)
-                            bot.telegram.sendMessage(userId, x);
-                    })
-                }
-            }))
-        })
+            arr.forEach(user => {
+                Bot.sendToUserClassUpdate(update, user.split(' ')[1], user.split(' ')[0]);
+            });
+        });
+    }
+
+    /**
+     * send class update to user
+     * @param {number} update
+     * @param {string} subscribedClass
+     * @param {string} userId
+     */
+    static sendToUserClassUpdate(update: number, subscribedClass: string, userId: string) {
+        let data = [];
+        if (update == 3 || update == 2) {
+            data = data.concat(Bot.formatClassData(false, subscribedClass));
+        }
+        if (update == 3 || update == 1) {
+            data = data.concat(Bot.formatClassData(true, subscribedClass));
+        }
+        if (data) {
+            data.forEach(x => {
+                if (x)
+                    bot.telegram.sendMessage(userId, x);
+            });
+        }
     }
 
     static formatClassData(today: boolean, subscribedClass: string) {
