@@ -8,39 +8,44 @@ const nodeBot = require('telegraf');
 const bot = new nodeBot("667639490:AAFBuY8_6zuRsFAbeF5CPQCsLmUn5x_zDV8");
 
 bot.start((ctx) => {
-    console.log(ctx['update']['message']['from']);
+    console.log(ctx['update']['message']['from']['id']);
     ctx.reply('Welcome');
 });
-bot.help((ctx) => ctx.reply('Send me a sticker'));
-bot.command('update', (ctx) => {
-    if (moment() < moment().hours(8).minutes(0)) {
-        //lade von gestern nachmittag
-        console.log('reload yesterday')
-        Bot.updatePlanYesterday()
-    } else if (moment() < moment().hours(8).minutes(0)) {
-        //lade von heute morgen
-        console.log('reload today morning')
-        Bot.updatePlanMorning()
-    } else {
-        //lade von heute abend
-        console.log('reload today afternoon')
-        Bot.updatePlanAfternoon()
-    }
 
-    ctx.reply('Verträtungspläne geupdatet')
+bot.help((ctx) => ctx.reply('Hilfe noch nicht verfügbar'));
+
+//check if new plans are online and send updated plan(s)
+bot.command('update', (ctx) => {
+
+    Bot.updatePlan().then((update) => {
+        ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
+        if (update == 3 || update == 2) {
+            Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+        }
+        if (update == 3 || update == 1) {
+            Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+        }
+    });
+
 });
-bot.command('heute', (ctx) => {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], moment().format('YYYYMMDD'));
+
+//send plan 1 from storage
+bot.command('1', (ctx) => {
+    Bot.sendPlan(ctx['update']['message']['from']['id'], true);
 });
-bot.command('morgen', (ctx) => {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], moment().add(1, 'd').format('YYYYMMDD'));
+
+//send plan 2 from storage
+bot.command('2', (ctx) => {
+    Bot.sendPlan(ctx['update']['message']['from']['id'], false);
 });
-bot.command('ubermorgen', (ctx) => {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], moment().add(2, 'd').format('YYYYMMDD'));
-});
+
 bot.launch();
 
 class Bot {
+
+    static filesizeToday;
+    static filezizeTomorow;
+
     public static startScripts() {
         Bot.startBot();
     }
@@ -48,10 +53,9 @@ class Bot {
     /**
      * Lade Vertretungsplan und speichere ihn im Grundpfad
      * @param {boolean} today
-     * @param {string} filename
      */
-    static loadPlan(today: boolean, filename: string = null) {
-        try {
+    static loadPlan(today: boolean): Promise<boolean> {
+        return new Promise((res, rej) => {
             request({
                 uri: 'https://www.kgs-tornesch.de/Vertretungsplan/Online' + (today ? 1 : 2) + '.pdf',
                 headers: {
@@ -65,61 +69,80 @@ class Bot {
                 }
             }, function (error, response, body) {
                 if (!error && response.statusCode === 200) {
-                    fs.writeFileSync((filename ? filename : (today ? 1 : 2)) + '.pdf', body, 'binary');
+                    let file = (today ? 1 : 2) + '.pdf';
+                    fs.writeFileSync(file, body, 'binary');
+                    let filesize = Bot.getFilesizeInBytes(file);
+
+                    if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
+                        console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
+                        res(false);
+                    } else {
+                        console.log('update file ' + file + ' (' + filesize + ')');
+                        today ? Bot.filesizeToday = filesize : Bot.filezizeTomorow = filesize;
+                        res(true);
+                    }
                 } else {
-                    console.log(error)
-                    console.log(response.statusCode)
+                    console.log(error);
+                    rej();
                 }
             });
-        } catch (e) {
+        });
 
+
+    }
+
+    static getFilesizeInBytes(filename): number {
+        if (!fs.existsSync(filename)) {
+            return 0;
         }
+        const stats = fs.statSync(filename);
+        return stats.size;
     }
 
     /**
      * sende Datei an nutzer
      * @param {number} chatId
-     * @param {string} filename
+     * @param today
      */
-    static sendPlan(chatId: string, filename: string) {
+    static sendPlan(chatId: string, today: boolean) {
         try {
-            if (fs.existsSync(__dirname + '/' + filename + '.pdf')) {
+            if (fs.existsSync(__dirname + '/' + (today ? 1 : 2) + '.pdf')) {
                 bot.telegram.sendDocument(chatId, {
-                    source: fs.createReadStream(__dirname + '/' + filename + '.pdf'),
-                    filename: filename + '.pdf'
+                    source: fs.createReadStream(__dirname + '/' + (today ? 1 : 2) + '.pdf'),
+                    filename: (today ? 1 : 2) + '.pdf'
                 });
             }
         } catch (e) {
         }
     }
 
-    static updatePlanYesterday() {
-        Bot.loadPlan(true, moment().format('YYYYMMDD'));
-        Bot.loadPlan(false, moment().add(1, 'd').format('YYYYMMDD'))
+    /**
+     * 3: beide
+     * 2: nur 2
+     * 1: nur 1
+     * 0: keiner
+     */
+    static async updatePlan(): Promise<number> {
+        let one = await Bot.loadPlan(true);
+        let two = await Bot.loadPlan(false);
+        return (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0;
     }
 
-    static updatePlanMorning() {
-        Bot.loadPlan(true, moment().format('YYYYMMDD'));
-        Bot.loadPlan(false, moment().add(1, 'd').format('YYYYMMDD'))
-    }
-
-    static updatePlanAfternoon() {
-        Bot.loadPlan(true, moment().add(1, 'd').format('YYYYMMDD'));
-        Bot.loadPlan(false, moment().add(2, 'd').format('YYYYMMDD'))
-    }
 
     private static startBot() {
         console.log('Cron gestartet');
-        new CronJob('15 8 * * *', () => {
-            Bot.updatePlanMorning();
-        }, () => {
-            console.log('job is done')
-        }, true, 'Europe/Berlin');
+        new CronJob('0,15,30,45 7-8,16-18 * * *', () => {
+            Bot.updatePlan().then(update=>{
+                //todo send to all users with activated updates
 
-        new CronJob('15 17 * * *', () => {
-            Bot.updatePlanAfternoon();
+                // if (update == 3 || update == 2) {
+                //     Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+                // }
+                // if (update == 3 || update == 1) {
+                //     Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+                // }
+            })
         }, () => {
-            console.log('job is done')
         }, true, 'Europe/Berlin');
     }
 }
