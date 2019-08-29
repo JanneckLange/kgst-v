@@ -128,6 +128,7 @@ bot.command('class', function (ctx) {
         Bot.readFileToArray(subscriberPath).then(function (arr) {
             arr.forEach(function (data) {
                 if ("" + data.split(' ')[0] === "" + ctx['update']['message']['from']['id']) {
+                    console.log("Sende Vertretungen f\u00FCr " + data.split(' ')[1] + " an " + ctx['update']['message']['from']['id']);
                     Bot.sendClassUpdateToSubscriber(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
                     count_1++;
                 }
@@ -240,6 +241,7 @@ var Bot = /** @class */ (function () {
         var lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
         var roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
         var removeReg = /\s\(\w{2,3}\)/g;
+        var dateReg = /(?<=Online-Ausgabe\s\s)\d{1,2}.\d{1,2}.\s\/\s\w+/;
         return new Promise(function (res, rej) {
             var dataBuffer = fs.readFileSync((today ? pdfOnePath : pdfTwoPath));
             pdf(dataBuffer).then(function (data) {
@@ -289,9 +291,11 @@ var Bot = /** @class */ (function () {
                 allClasses = allClasses.filter(function (item, pos) {
                     return allClasses.indexOf(item) == pos;
                 });
+                console.log(data.text.match(dateReg)[0]);
                 var obj = {
                     pages: data.numpages,
                     creationDate: data.info['CreationDate'].slice(2, 14),
+                    date: data.text.match(dateReg)[0],
                     classes: allClasses,
                     text: text
                 };
@@ -384,13 +388,11 @@ var Bot = /** @class */ (function () {
         if (update == 3 || update == 1) {
             data = data.concat(Bot.formatClassData(true, subscribedClass));
         }
-        if (data) {
-            data.forEach(function (x) {
-                if (x) {
-                    bot.telegram.sendMessage(userId, x);
-                }
-            });
-        }
+        data.forEach(function (x) {
+            if (x) {
+                bot.telegram.sendMessage(userId, x);
+            }
+        });
     };
     /**
      * get filesize in bytes
@@ -428,35 +430,24 @@ var Bot = /** @class */ (function () {
         });
     };
     Bot.formatClassData = function (today, subscribedClass) {
-        return __awaiter(this, void 0, void 0, function () {
-            var filePath, plan, data_1;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        filePath = today ? jsonOnePath : jsonTwoPath;
-                        if (!!fs.existsSync(filePath)) return [3 /*break*/, 2];
-                        return [4 /*yield*/, Bot.triggerPlanUpdate()];
-                    case 1:
-                        _a.sent();
-                        _a.label = 2;
-                    case 2:
-                        plan = JSON.parse(fs.readFileSync(filePath));
-                        if (plan.classes.includes(subscribedClass)) {
-                            data_1 = [];
-                            plan.text.forEach(function (x) {
-                                if (x.class.includes(subscribedClass)) {
-                                    data_1.push((today ? 'Heute' : 'Morgen') + " " + subscribedClass + ": Stunde:" + x.hour + " Fach:" + x.lesson + " Raum:" + x.room + " Art:" + x.type + " Text:" + x.more);
-                                }
-                            });
-                            return [2 /*return*/, data_1];
-                        }
-                        else {
-                            return [2 /*return*/, null];
-                        }
-                        return [2 /*return*/];
+        var filePath = today ? jsonOnePath : jsonTwoPath;
+        if (!fs.existsSync(filePath)) {
+            console.log(filePath + ' did not exist. Create file...');
+            Bot.triggerPlanUpdate();
+        }
+        var plan = JSON.parse(fs.readFileSync(filePath));
+        if (plan.classes.includes(subscribedClass)) {
+            var data_1 = [];
+            plan.text.forEach(function (x) {
+                if (x.class.includes(subscribedClass)) {
+                    data_1.push(plan.date + " (" + subscribedClass + ")\n" + x.hour + ". Stunde " + x.lesson + " - " + x.type + "\n" + (x.room === '---' ? '' : 'Raum: ' + x.room) + " " + (x.more ? 'Info: ' + x.more : ''));
                 }
             });
-        });
+            return data_1;
+        }
+        else {
+            return null;
+        }
     };
     Bot.startBot = function () {
         console.log('Cron gestartet');

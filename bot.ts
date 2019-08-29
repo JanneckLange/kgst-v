@@ -100,6 +100,7 @@ bot.command('class', (ctx) => {
         Bot.readFileToArray(subscriberPath).then(arr => {
             arr.forEach(data => {
                 if (`${data.split(' ')[0]}` === `${ctx['update']['message']['from']['id']}`) {
+                    console.log(`Sende Vertretungen für ${data.split(' ')[1]} an ${ctx['update']['message']['from']['id']}`);
                     Bot.sendClassUpdateToSubscriber(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
                     count++;
                 }
@@ -126,7 +127,7 @@ function sendSubscribePlanTutorial(ctx) {
     ctx.reply('Tutorial noch nicht fertig.');
 }
 
-function sendGetDataNowTutorial(ctx){
+function sendGetDataNowTutorial(ctx) {
     ctx.reply('Tutorial noch nicht fertig.');
 }
 
@@ -213,6 +214,7 @@ class Bot {
         const lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
         const roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
         const removeReg = /\s\(\w{2,3}\)/g;
+        const dateReg = /(?<=Online-Ausgabe\s\s)\d{1,2}.\d{1,2}.\s\/\s\w+/;
 
         return new Promise((res, rej) => {
             let dataBuffer = fs.readFileSync((today ? pdfOnePath : pdfTwoPath));
@@ -271,10 +273,11 @@ class Bot {
                 allClasses = allClasses.filter(function (item, pos) {
                     return allClasses.indexOf(item) == pos;
                 });
-
+                console.log(data.text.match(dateReg)[0])
                 let obj = {
                     pages: data.numpages,
                     creationDate: data.info['CreationDate'].slice(2, 14),
+                    date: data.text.match(dateReg)[0],
                     classes: allClasses,
                     text: text
                 };
@@ -360,13 +363,12 @@ class Bot {
         if (update == 3 || update == 1) {
             data = data.concat(Bot.formatClassData(true, subscribedClass));
         }
-        if (data) {
-            data.forEach(x => {
-                if (x) {
-                    bot.telegram.sendMessage(userId, x);
-                }
-            });
-        }
+        data.forEach(x => {
+            if (x) {
+                bot.telegram.sendMessage(userId, x);
+            }
+        });
+
     }
 
 
@@ -408,18 +410,18 @@ class Bot {
 
     }
 
-    static async formatClassData(today: boolean, subscribedClass: string) {
+    static formatClassData(today: boolean, subscribedClass: string) {
         const filePath = today ? jsonOnePath : jsonTwoPath;
         if (!fs.existsSync(filePath)) {
-            await Bot.triggerPlanUpdate();
+            console.log(filePath + ' did not exist. Create file...');
+            Bot.triggerPlanUpdate();
         }
-
         let plan = JSON.parse(fs.readFileSync(filePath));
         if (plan.classes.includes(subscribedClass)) {
             let data = [];
             plan.text.forEach(x => {
                 if (x.class.includes(subscribedClass)) {
-                    data.push(`${today ? 'Heute' : 'Morgen'} ${subscribedClass}: Stunde:${x.hour} Fach:${x.lesson} Raum:${x.room} Art:${x.type} Text:${x.more}`)
+                    data.push(`${plan.date} (${subscribedClass})\n${x.hour}. Stunde ${x.lesson} - ${x.type}\n${x.room === '---' ? '' : 'Raum: ' + x.room} ${x.more ? 'Info: ' + x.more : ''}`)
                 }
             });
             return data;
