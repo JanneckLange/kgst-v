@@ -40,19 +40,13 @@ var stream = require('stream');
 var readline = require('readline');
 var fs = require('fs');
 var request = require('request');
+var pdf = require('pdf-parse');
 var nodeBot = require('telegraf');
-var bot = new nodeBot("XXX");
+var bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
+var userFilePath = './user.txt';
+var subscriberPath = './subscriber.txt';
 bot.start(function (ctx) {
-    console.log();
-    Bot.readFileToArray().then(function (arr) {
-        if (!arr.includes('' + ctx['update']['message']['from']['id'])) {
-            fs.appendFileSync('user.txt', ctx['update']['message']['from']['id'] + '\n');
-            ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
-        }
-        else {
-            ctx.reply('Willkommen zurück, du erhälst nun wieder regemmäßig die neusten Vertretungspläne.');
-        }
-    });
+    Bot.parsePDFToJson(true);
 });
 bot.help(function (ctx) {
     ctx.reply('Der Bot hat dich gespeichert und sendet dir nun automatisch die aktuellsten Vertretungspläne zu.');
@@ -72,6 +66,39 @@ bot.command('update', function (ctx) {
         }
     });
 });
+bot.command('subscribe', function (ctx) {
+    //subscribe to class
+    if (ctx['update']['message']['text'].split(' ')[1]) {
+        Bot.readFileToArray(subscriberPath).then(function (arr) {
+            var content = ctx['update']['message']['from']['id'] + " " + ctx['update']['message']['text'].split(' ')[1];
+            if (!arr.includes(content)) {
+                fs.appendFileSync(subscriberPath, content + '\n');
+                ctx.reply('Sie erhalten nun updates für die Klasse ' + ctx['update']['message']['text'].split(' ')[1]);
+            }
+            else {
+                ctx.reply('Sie sind beriets registriert');
+            }
+        });
+    }
+    //subscribe
+    else {
+        Bot.readFileToArray(userFilePath).then(function (arr) {
+            var content = "" + ctx['update']['message']['from']['id'];
+            if (!arr.includes(content)) {
+                fs.appendFileSync(userFilePath, content + '\n');
+                ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
+            }
+            else {
+                ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
+            }
+        });
+        ctx.reply('Wenn sie nur Benachrichtigungen für eine Klasse haben wollen, dann senden sie bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+    }
+});
+bot.command('unsubscribe', function (ctx) {
+    // ctx['update']['message']['text'].split(' ')[1]
+    ctx.reply('noch nicht verfügbar');
+});
 //send plan 1 from storage
 bot.command('1', function (ctx) {
     Bot.sendPlan(ctx['update']['message']['from']['id'], true);
@@ -86,6 +113,79 @@ var Bot = /** @class */ (function () {
     }
     Bot.startScripts = function () {
         Bot.startBot();
+    };
+    Bot.parsePDFToJson = function (today) {
+        var classReg = /([56789]|[1][0123])[a-z]+/g;
+        var hourReg = /\d{1,2}( - \d{1,2})*/;
+        var kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
+        var lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
+        var roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
+        var removeReg = /\s\(\w{2,3}\)/g;
+        return new Promise(function (res, rej) {
+            var pdf_path = __dirname + '\\' + (today ? 1 : 2) + '.pdf';
+            var dataBuffer = fs.readFileSync(pdf_path);
+            pdf(dataBuffer).then(function (data) {
+                var allText = data.text.split('\n');
+                var text = [];
+                var allClasses = [];
+                //find all lines with classes and push classes to array
+                allText.forEach(function (el) {
+                    el = el.replace(removeReg, '');
+                    //match = file row contains a class
+                    var match = el.match(classReg);
+                    if (match) {
+                        //make multi classes to single classes => 5ab -> 5a,5b
+                        match.forEach(function (m) {
+                            //if class number has multiple class letters
+                            var classes = m;
+                            if (m.match(/([56789]|[1][0123])[a-z]{2,}/)) {
+                                var classNumber_1 = m.match(/([56789]|[1][0123])/)[0];
+                                var classLetters = m.match(/[a-z]/g);
+                                classes = classLetters.map(function (x) { return classNumber_1 + x; });
+                            }
+                            allClasses.push(classes);
+                            // console.log(classes)
+                            // console.log(m)
+                            // console.log(el)
+                            // console.log('________________________')
+                            var hour = el.slice(m.length, el.length).match(hourReg)[0];
+                            var lesson = el.match(kgsReg);
+                            lesson = lesson ? lesson[0] : lessons.find(function (x) {
+                                return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x);
+                            });
+                            var type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
+                            var room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+                            text.push({
+                                class: classes,
+                                //5abcdef6KGS_5a_FuFEntfall--- matcht doppelt? 5abcdef und 5a
+                                //'6abdeg5KGS_6a_FuF2Entfall--- genauso
+                                hour: hour,
+                                lesson: lesson,
+                                room: room,
+                                type: type,
+                                more: el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length),
+                                full: el
+                            });
+                        });
+                    }
+                });
+                //flatten array https://stackoverflow.com/questions/10865025/merge-flatten-an-array-of-arrays
+                allClasses = [].concat.apply([], allClasses);
+                //remove duplicates
+                allClasses = allClasses.filter(function (item, pos) {
+                    return allClasses.indexOf(item) == pos;
+                });
+                var obj = {
+                    pages: data.numpages,
+                    creationDate: data.info['CreationDate'].slice(2, 14),
+                    classes: allClasses,
+                    text: text
+                };
+                console.log(obj);
+                fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
+                res(obj);
+            });
+        });
     };
     /**
      * Lade Vertretungsplan und speichere ihn im Grundpfad
@@ -168,9 +268,15 @@ var Bot = /** @class */ (function () {
                     case 0: return [4 /*yield*/, Bot.loadPlan(true)];
                     case 1:
                         one = _a.sent();
+                        if (one) {
+                            Bot.parsePDFToJson(true);
+                        }
                         return [4 /*yield*/, Bot.loadPlan(false)];
                     case 2:
                         two = _a.sent();
+                        if (two) {
+                            Bot.parsePDFToJson(false);
+                        }
                         return [2 /*return*/, (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0];
                 }
             });
@@ -179,9 +285,8 @@ var Bot = /** @class */ (function () {
     /**
      * lese die user.txt file in ein array
      */
-    Bot.readFileToArray = function () {
+    Bot.readFileToArray = function (filename) {
         return new Promise(function (res, rej) {
-            var filename = './user.txt';
             if (fs.existsSync(filename)) {
                 var instream = fs.createReadStream(filename);
                 var outstream = new stream;
@@ -201,18 +306,20 @@ var Bot = /** @class */ (function () {
             }
         });
     };
+    Bot.sendUpdates = function (planAsJson) {
+    };
     Bot.startBot = function () {
         console.log('Cron gestartet');
         new cron_1.CronJob('0,15,30,45 7-8,16-18 * * *', function () {
             console.log('Starte CronJob');
             Bot.updatePlan().then(function (update) {
-                Bot.readFileToArray().then(function (arr) {
-                    arr.forEach((function (el) {
+                Bot.readFileToArray('./user.txt').then(function (arr) {
+                    arr.forEach((function (chatId) {
                         if (update == 3 || update == 2) {
-                            Bot.sendPlan(el, false);
+                            Bot.sendPlan(chatId, false);
                         }
                         if (update == 3 || update == 1) {
-                            Bot.sendPlan(el, true);
+                            Bot.sendPlan(chatId, true);
                         }
                     }));
                 });

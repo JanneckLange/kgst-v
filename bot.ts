@@ -4,20 +4,17 @@ const stream = require('stream');
 const readline = require('readline');
 const fs = require('fs');
 const request = require('request');
+const pdf = require('pdf-parse');
 
 const nodeBot = require('telegraf');
-const bot = new nodeBot("XXX");
+const bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
+
+let userFilePath = './user.txt';
+let subscriberPath = './subscriber.txt';
 
 bot.start((ctx) => {
-    console.log();
-    Bot.readFileToArray().then(arr => {
-        if (!arr.includes(''+ctx['update']['message']['from']['id'])) {
-            fs.appendFileSync('user.txt', ctx['update']['message']['from']['id'] + '\n');
-            ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
-        } else {
-            ctx.reply('Willkommen zurück, du erhälst nun wieder regemmäßig die neusten Vertretungspläne.');
-        }
-    });
+
+    Bot.parsePDFToJson(true);
 });
 
 bot.help((ctx) => {
@@ -42,6 +39,40 @@ bot.command('update', (ctx) => {
 
 });
 
+bot.command('subscribe', ctx => {
+    //subscribe to class
+    if (ctx['update']['message']['text'].split(' ')[1]) {
+        Bot.readFileToArray(subscriberPath).then(arr => {
+            let content = `${ctx['update']['message']['from']['id']} ${ctx['update']['message']['text'].split(' ')[1]}`;
+            if (!arr.includes(content)) {
+                fs.appendFileSync(subscriberPath, content + '\n');
+                ctx.reply('Sie erhalten nun updates für die Klasse ' + ctx['update']['message']['text'].split(' ')[1]);
+            } else {
+                ctx.reply('Sie sind beriets registriert');
+            }
+        });
+
+    }
+    //subscribe
+    else {
+        Bot.readFileToArray(userFilePath).then(arr => {
+            let content = `${ctx['update']['message']['from']['id']}`;
+            if (!arr.includes(content)) {
+                fs.appendFileSync(userFilePath, content + '\n');
+                ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
+            } else {
+                ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
+            }
+        });
+        ctx.reply('Wenn sie nur Benachrichtigungen für eine Klasse haben wollen, dann senden sie bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+    }
+});
+
+bot.command('unsubscribe', ctx => {
+    // ctx['update']['message']['text'].split(' ')[1]
+    ctx.reply('noch nicht verfügbar');
+});
+
 //send plan 1 from storage
 bot.command('1', (ctx) => {
     Bot.sendPlan(ctx['update']['message']['from']['id'], true);
@@ -54,6 +85,7 @@ bot.command('2', (ctx) => {
 
 bot.launch();
 
+
 class Bot {
 
     static filesizeToday;
@@ -61,6 +93,90 @@ class Bot {
 
     public static startScripts() {
         Bot.startBot();
+    }
+
+    static parsePDFToJson(today: boolean) {
+        const classReg = /([56789]|[1][0123])[a-z]+/g;
+        const hourReg = /\d{1,2}( - \d{1,2})*/;
+        const kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
+        const lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
+        const roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
+        const removeReg = /\s\(\w{2,3}\)/g;
+
+        return new Promise((res, rej) => {
+            const pdf_path = __dirname + '\\' + (today ? 1 : 2) + '.pdf';
+            let dataBuffer = fs.readFileSync(pdf_path);
+            pdf(dataBuffer).then(function (data) {
+                let allText = data.text.split('\n');
+                let text = [];
+                let allClasses = [];
+
+                //find all lines with classes and push classes to array
+                allText.forEach(el => {
+                    el = el.replace(removeReg, '');
+                    //match = file row contains a class
+                    let match = el.match(classReg);
+                    if (match) {
+                        //make multi classes to single classes => 5ab -> 5a,5b
+                        match.forEach(m => {
+                            //if class number has multiple class letters
+                            let classes = m;
+                            if (m.match(/([56789]|[1][0123])[a-z]{2,}/)) {
+                                let classNumber = m.match(/([56789]|[1][0123])/)[0];
+                                let classLetters = m.match(/[a-z]/g);
+                                classes = classLetters.map(x => classNumber + x);
+                            }
+                            allClasses.push(classes);
+                            // console.log(classes)
+                            // console.log(m)
+                            // console.log(el)
+                            // console.log('________________________')
+                            let hour = el.slice(m.length, el.length).match(hourReg)[0];
+
+                            let lesson = el.match(kgsReg);
+                            lesson = lesson ? lesson[0] : lessons.find(x => {
+                                return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x)
+                            });
+
+                            let type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
+                            let room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+
+
+                            text.push({
+                                class: classes,
+                                //5abcdef6KGS_5a_FuFEntfall--- matcht doppelt? 5abcdef und 5a
+                                //'6abdeg5KGS_6a_FuF2Entfall--- genauso
+                                hour: hour,//confirmed
+                                lesson: lesson,//kann noch zu fehlern führen, dann in array eintragen
+                                room: room,// kann noch zu fehlern führen, bei sport oder doppelräumen
+                                type: type,
+                                more: el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length),
+                                full: el
+                            });
+
+                        });
+                    }
+                });
+
+                //flatten array https://stackoverflow.com/questions/10865025/merge-flatten-an-array-of-arrays
+                allClasses = [].concat.apply([], allClasses);
+
+                //remove duplicates
+                allClasses = allClasses.filter(function (item, pos) {
+                    return allClasses.indexOf(item) == pos;
+                });
+
+                let obj = {
+                    pages: data.numpages,
+                    creationDate: data.info['CreationDate'].slice(2, 14),
+                    classes: allClasses,
+                    text: text
+                };
+                console.log(obj);
+                fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
+                res(obj);
+            });
+        })
     }
 
     /**
@@ -141,16 +257,21 @@ class Bot {
      */
     static async updatePlan(): Promise<number> {
         let one = await Bot.loadPlan(true);
+        if (one) {
+            Bot.parsePDFToJson(true);
+        }
         let two = await Bot.loadPlan(false);
+        if (two) {
+            Bot.parsePDFToJson(false);
+        }
         return (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0;
     }
 
     /**
      * lese die user.txt file in ein array
      */
-    static readFileToArray(): Promise<Array<string>> {
+    static readFileToArray(filename: string): Promise<Array<string>> {
         return new Promise((res, rej) => {
-            let filename = './user.txt';
             if (fs.existsSync(filename)) {
                 const instream = fs.createReadStream(filename);
                 const outstream = new stream;
@@ -165,10 +286,14 @@ class Bot {
                     // do something on finish here
                     res(arr);
                 });
-            }else{
+            } else {
                 res([])
             }
         })
+
+    }
+
+    static sendUpdates(planAsJson) {
 
     }
 
@@ -177,13 +302,13 @@ class Bot {
         new CronJob('0,15,30,45 7-8,16-18 * * *', () => {
             console.log('Starte CronJob');
             Bot.updatePlan().then(update => {
-                Bot.readFileToArray().then(arr => {
-                    arr.forEach((el => {
+                Bot.readFileToArray('./user.txt').then(arr => {
+                    arr.forEach((chatId => {
                         if (update == 3 || update == 2) {
-                            Bot.sendPlan(el, false);
+                            Bot.sendPlan(chatId, false);
                         }
                         if (update == 3 || update == 1) {
-                            Bot.sendPlan(el, true);
+                            Bot.sendPlan(chatId, true);
                         }
                     }))
                 })

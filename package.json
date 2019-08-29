@@ -13,9 +13,12 @@
     "http-errors": "~1.6.3",
     "moment": "^2.24.0",
     "morgan": "~1.9.1",
+    "pdf-parse": "^1.1.1",
+    "pdf-to-text": "0.0.7",
+    "pdf2json": "^1.1.8",
     "pug": "2.0.0-beta11",
-    "telegraf": "^3.32.0",
     "request": "^2.88.0",
+    "telegraf": "^3.32.0",
     "telegram-node-bot": "^4.0.5"
   },
   "devDependencies": {}
