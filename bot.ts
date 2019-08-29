@@ -13,11 +13,13 @@ let userFilePath = './user.txt';
 let subscriberPath = './subscriber.txt';
 
 bot.start((ctx) => {
-
+    ctx.reply('Willkommen!\nSieht so aus als würdest du gerne den Vertretungsplan der KGST sehen. \n' +
+        'Mit dem Befehlen /1 oder /2 bekommst du den ganzen Plan als PDF.\n' +
+        'Wenn du immer automatisch den neuesten zugesendet bekommen willst /subscribe doch einfach.\n' +
+        'Wenn du nur die Infos einer bestimmten Klasse haben willst, dann sende die Klasse mit (z.B.: /subscribe 5f)');
 });
 
 bot.help((ctx) => {
-    ctx.reply('Der Bot hat dich gespeichert und sendet dir nun automatisch die aktuellsten Vertretungspläne zu.');
     ctx.reply('Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.');
     ctx.reply('Mit "/1" wird der erste und mit "/2" der zweite Plan geladen. Dabei kann es vorkommen, dass die Pläne noch nicht mit denen der KGST aktuallisiert worden sind. Mit "/update" wird eine aktuallisierung erzwungen.');
     ctx.reply('Der Bot befindet sich in einer noch sehr frühen Phase der Entwicklung. Es kann daher noch zu fehlern kommen, ich bitte dies zu entschuldigen.');
@@ -56,12 +58,12 @@ bot.command('subscribe', ctx => {
             let content = `${ctx['update']['message']['from']['id']}`;
             if (!arr.includes(content)) {
                 fs.appendFileSync(userFilePath, content + '\n');
-                ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
+                ctx.reply('Du erhälst nun regemmäßig die neusten Vertretungspläne.');
             } else {
                 ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
             }
         });
-        ctx.reply('Wenn sie nur Benachrichtigungen für eine Klasse haben wollen, dann senden sie bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
+        ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
     }
 });
 
