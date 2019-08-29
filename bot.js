@@ -45,6 +45,10 @@ var nodeBot = require('telegraf');
 var bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
 var userFilePath = './user.txt';
 var subscriberPath = './subscriber.txt';
+var pdfOnePath = './1.pdf';
+var pdfTwoPath = './2.pdf';
+var jsonOnePath = './1.json';
+var jsonTwoPath = './2.json';
 bot.start(function (ctx) {
     ctx.reply('Willkommen!\nSieht so aus als würdest du gerne den Vertretungsplan der KGST sehen. \n' +
         'Mit dem Befehlen /1 oder /2 bekommst du den ganzen Plan als PDF.\n' +
@@ -58,13 +62,13 @@ bot.help(function (ctx) {
 });
 //check if new plans are online and send updated plan(s)
 bot.command('update', function (ctx) {
-    Bot.updatePlan().then(function (update) {
+    Bot.triggerPlanUpdate().then(function (update) {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
-            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+            Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
         }
         if (update == 3 || update == 1) {
-            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+            Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
         }
     });
 });
@@ -81,7 +85,7 @@ bot.command('subscribe', function (ctx) {
                 ctx.reply('Sie sind beriets registriert');
             }
             setTimeout(function () {
-                Bot.sendToUserClassUpdate(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id']);
+                Bot.sendClassUpdateToSubscriber(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id']);
             }, 1000);
         });
     }
@@ -100,8 +104,8 @@ bot.command('subscribe', function (ctx) {
         setTimeout(function () {
             ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
             setTimeout(function () {
-                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
-                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
+                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
             }, 500);
         }, 500);
     }
@@ -112,21 +116,44 @@ bot.command('unsubscribe', function (ctx) {
 });
 //send plan 1 from storage
 bot.command('1', function (ctx) {
-    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+    Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 //send plan 2 from storage
 bot.command('2', function (ctx) {
-    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+    Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
 bot.command('class', function (ctx) {
-    Bot.readFileToArray(subscriberPath).then(function (arr) {
-        arr.forEach(function (data) {
-            if ("" + data.split(' ')[0] === "" + ctx['update']['message']['from']['id']) {
-                Bot.sendToUserClassUpdate(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
+    if (fs.existsSync(subscriberPath)) {
+        var count_1 = 0;
+        Bot.readFileToArray(subscriberPath).then(function (arr) {
+            arr.forEach(function (data) {
+                if ("" + data.split(' ')[0] === "" + ctx['update']['message']['from']['id']) {
+                    Bot.sendClassUpdateToSubscriber(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
+                    count_1++;
+                }
+            });
+            if (!count_1) {
+                sendReply();
             }
         });
-    });
+    }
+    else {
+        sendReply();
+    }
+    function sendReply() {
+        ctx.reply('Du hast keine Klasse Aboniert.');
+        sendSubscribeClassTutorial(ctx);
+    }
 });
+function sendSubscribeClassTutorial(ctx) {
+    ctx.reply('Tutorial noch nicht fertig.');
+}
+function sendSubscribePlanTutorial(ctx) {
+    ctx.reply('Tutorial noch nicht fertig.');
+}
+function sendGetDataNowTutorial(ctx) {
+    ctx.reply('Tutorial noch nicht fertig.');
+}
 bot.launch();
 var Bot = /** @class */ (function () {
     function Bot() {
@@ -134,7 +161,79 @@ var Bot = /** @class */ (function () {
     Bot.startScripts = function () {
         Bot.startBot();
     };
-    Bot.parsePDFToJson = function (today) {
+    /**
+     * 3: beide
+     * 2: nur 2
+     * 1: nur 1
+     * 0: keiner
+     */
+    Bot.triggerPlanUpdate = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var one, two;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, Bot.loadAndSavePdqPlanWhenNecessary(true)];
+                    case 1:
+                        one = _a.sent();
+                        if (one) {
+                            Bot.parsePdfPlanToJsonPlanAndSave(true);
+                        }
+                        return [4 /*yield*/, Bot.loadAndSavePdqPlanWhenNecessary(false)];
+                    case 2:
+                        two = _a.sent();
+                        if (two) {
+                            Bot.parsePdfPlanToJsonPlanAndSave(false);
+                        }
+                        return [2 /*return*/, (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0];
+                }
+            });
+        });
+    };
+    /**
+     * Lade Vertretungsplan und speichere ihn im Grundpfad
+     * @param {boolean} today
+     */
+    Bot.loadAndSavePdqPlanWhenNecessary = function (today) {
+        return new Promise(function (res, rej) {
+            request({
+                uri: 'https://www.kgs-tornesch.de/Vertretungsplan/Online' + (today ? 1 : 2) + '.pdf',
+                headers: {
+                    'Content-type': 'applcation/pdf',
+                    'Authorization': 'Basic S0dTOlRvcm5lc2No'
+                },
+                encoding: null,
+                authorization: {
+                    username: 'KGS',
+                    password: 'Tornesch'
+                }
+            }, function (error, response, body) {
+                if (!error && response.statusCode === 200) {
+                    var file = (today ? pdfOnePath : pdfTwoPath);
+                    fs.writeFileSync(file, body, 'binary');
+                    var filesize = Bot.getFileSizeInBytes(file);
+                    if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
+                        console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
+                        res(false);
+                    }
+                    else {
+                        //todo decide my creation date
+                        console.log('update file ' + file + ' (' + filesize + 'bytes)');
+                        today ? Bot.filesizeToday = filesize : Bot.filezizeTomorow = filesize;
+                        res(true);
+                    }
+                }
+                else {
+                    console.log(error);
+                    rej();
+                }
+            });
+        });
+    };
+    /**
+     * Wandle Pdj in Text um und erstelle Vertretungsplan als Json
+     * @param {boolean} today
+     * */
+    Bot.parsePdfPlanToJsonPlanAndSave = function (today) {
         var classReg = /([56789]|[1][0123])[a-z]+/g;
         var hourReg = /\d{1,2}( - \d{1,2})*/;
         var kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
@@ -142,8 +241,7 @@ var Bot = /** @class */ (function () {
         var roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
         var removeReg = /\s\(\w{2,3}\)/g;
         return new Promise(function (res, rej) {
-            var pdf_path = __dirname + '\\' + (today ? 1 : 2) + '.pdf';
-            var dataBuffer = fs.readFileSync(pdf_path);
+            var dataBuffer = fs.readFileSync((today ? pdfOnePath : pdfTwoPath));
             pdf(dataBuffer).then(function (data) {
                 var allText = data.text.split('\n');
                 var text = [];
@@ -164,10 +262,6 @@ var Bot = /** @class */ (function () {
                                 classes = classLetters.map(function (x) { return classNumber_1 + x; });
                             }
                             allClasses.push(classes);
-                            // console.log(classes)
-                            // console.log(m)
-                            // console.log(el)
-                            // console.log('________________________')
                             var hour = el.slice(m.length, el.length).match(hourReg)[0];
                             var lesson = el.match(kgsReg);
                             lesson = lesson ? lesson[0] : lessons.find(function (x) {
@@ -202,49 +296,101 @@ var Bot = /** @class */ (function () {
                     text: text
                 };
                 // console.log(obj);
-                fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
+                fs.writeFileSync((today ? jsonOnePath : jsonTwoPath), JSON.stringify(obj), 'binary');
                 res(obj);
             });
         });
     };
+    Bot.triggerSendAllUpdates = function (update) {
+        Bot.sendPdfFileUpdateToAllUser(update);
+        Bot.sendClassUpdateToAllSubscriber(update);
+    };
     /**
-     * Lade Vertretungsplan und speichere ihn im Grundpfad
-     * @param {boolean} today
+     * send updated plans to user
+     * @param update
      */
-    Bot.loadPlan = function (today) {
-        return new Promise(function (res, rej) {
-            request({
-                uri: 'https://www.kgs-tornesch.de/Vertretungsplan/Online' + (today ? 1 : 2) + '.pdf',
-                headers: {
-                    'Content-type': 'applcation/pdf',
-                    'Authorization': 'Basic S0dTOlRvcm5lc2No'
-                },
-                encoding: null,
-                authorization: {
-                    username: 'KGS',
-                    password: 'Tornesch'
-                }
-            }, function (error, response, body) {
-                if (!error && response.statusCode === 200) {
-                    var file = (today ? 1 : 2) + '.pdf';
-                    fs.writeFileSync(file, body, 'binary');
-                    var filesize = Bot.getFileSizeInBytes(file);
-                    if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
-                        console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
-                        res(false);
+    Bot.sendPdfFileUpdateToAllUser = function (update) {
+        if (fs.existsSync(userFilePath)) {
+            Bot.readFileToArray(userFilePath).then(function (arr) {
+                arr.forEach((function (chatId) {
+                    if (update == 3 || update == 2) {
+                        Bot.sendPdfPlanToUser(chatId, false);
                     }
-                    else {
-                        console.log('update file ' + file + ' (' + filesize + ')');
-                        today ? Bot.filesizeToday = filesize : Bot.filezizeTomorow = filesize;
-                        res(true);
+                    if (update == 3 || update == 1) {
+                        Bot.sendPdfPlanToUser(chatId, true);
                     }
-                }
-                else {
-                    console.log(error);
-                    rej();
+                }));
+            });
+        }
+        else {
+            console.error(userFilePath + ' did not exist.');
+        }
+    };
+    /**
+     * sende Datei an nutzer
+     * @param {number} chatId
+     * @param today
+     */
+    Bot.sendPdfPlanToUser = function (chatId, today) {
+        return __awaiter(this, void 0, void 0, function () {
+            var filename;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        filename = today ? pdfOnePath : pdfTwoPath;
+                        if (!!fs.existsSync(filename)) return [3 /*break*/, 2];
+                        return [4 /*yield*/, Bot.triggerPlanUpdate()];
+                    case 1:
+                        _a.sent();
+                        _a.label = 2;
+                    case 2: return [4 /*yield*/, bot.telegram.sendDocument(chatId, {
+                            source: fs.createReadStream(filename),
+                            filename: (today ? 1 : 2) + '.pdf'
+                        })];
+                    case 3:
+                        _a.sent();
+                        return [2 /*return*/];
                 }
             });
         });
+    };
+    /**
+     * send updated classes to subscriber
+     * @param update
+     */
+    Bot.sendClassUpdateToAllSubscriber = function (update) {
+        if (fs.existsSync(subscriberPath)) {
+            Bot.readFileToArray(subscriberPath).then(function (arr) {
+                arr.forEach(function (user) {
+                    Bot.sendClassUpdateToSubscriber(update, user.split(' ')[1], user.split(' ')[0]);
+                });
+            });
+        }
+        else {
+            console.error(subscriberPath + ' did not exist');
+        }
+    };
+    /**
+     * send class update to user
+     * @param {number} update
+     * @param {string} subscribedClass
+     * @param {string} userId
+     */
+    Bot.sendClassUpdateToSubscriber = function (update, subscribedClass, userId) {
+        var data = [];
+        if (update == 3 || update == 2) {
+            data = data.concat(Bot.formatClassData(false, subscribedClass));
+        }
+        if (update == 3 || update == 1) {
+            data = data.concat(Bot.formatClassData(true, subscribedClass));
+        }
+        if (data) {
+            data.forEach(function (x) {
+                if (x) {
+                    bot.telegram.sendMessage(userId, x);
+                }
+            });
+        }
     };
     /**
      * get filesize in bytes
@@ -256,51 +402,6 @@ var Bot = /** @class */ (function () {
         }
         var stats = fs.statSync(filename);
         return stats.size;
-    };
-    /**
-     * sende Datei an nutzer
-     * @param {number} chatId
-     * @param today
-     */
-    Bot.sendPdfPlan = function (chatId, today) {
-        try {
-            if (fs.existsSync(__dirname + '/' + (today ? 1 : 2) + '.pdf')) {
-                bot.telegram.sendDocument(chatId, {
-                    source: fs.createReadStream(__dirname + '/' + (today ? 1 : 2) + '.pdf'),
-                    filename: (today ? 1 : 2) + '.pdf'
-                });
-            }
-        }
-        catch (e) {
-        }
-    };
-    /**
-     * 3: beide
-     * 2: nur 2
-     * 1: nur 1
-     * 0: keiner
-     */
-    Bot.updatePlan = function () {
-        return __awaiter(this, void 0, void 0, function () {
-            var one, two;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0: return [4 /*yield*/, Bot.loadPlan(true)];
-                    case 1:
-                        one = _a.sent();
-                        if (one) {
-                            Bot.parsePDFToJson(true);
-                        }
-                        return [4 /*yield*/, Bot.loadPlan(false)];
-                    case 2:
-                        two = _a.sent();
-                        if (two) {
-                            Bot.parsePDFToJson(false);
-                        }
-                        return [2 /*return*/, (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0];
-                }
-            });
-        });
     };
     /**
      * lese die user.txt file in ein array
@@ -326,80 +427,43 @@ var Bot = /** @class */ (function () {
             }
         });
     };
-    Bot.sendUpdates = function (update) {
-        Bot.updateGlobal(update);
-        Bot.updateClass(update);
-    };
-    /**
-     * send updated plans to user
-     * @param update
-     */
-    Bot.updateGlobal = function (update) {
-        Bot.readFileToArray(userFilePath).then(function (arr) {
-            arr.forEach((function (chatId) {
-                if (update == 3 || update == 2) {
-                    Bot.sendPdfPlan(chatId, false);
-                }
-                if (update == 3 || update == 1) {
-                    Bot.sendPdfPlan(chatId, true);
-                }
-            }));
-        });
-    };
-    /**
-     * send updated classes to subscriber
-     * @param update
-     */
-    Bot.updateClass = function (update) {
-        Bot.readFileToArray(subscriberPath).then(function (arr) {
-            arr.forEach(function (user) {
-                Bot.sendToUserClassUpdate(update, user.split(' ')[1], user.split(' ')[0]);
-            });
-        });
-    };
-    /**
-     * send class update to user
-     * @param {number} update
-     * @param {string} subscribedClass
-     * @param {string} userId
-     */
-    Bot.sendToUserClassUpdate = function (update, subscribedClass, userId) {
-        var data = [];
-        if (update == 3 || update == 2) {
-            data = data.concat(Bot.formatClassData(false, subscribedClass));
-        }
-        if (update == 3 || update == 1) {
-            data = data.concat(Bot.formatClassData(true, subscribedClass));
-        }
-        if (data) {
-            data.forEach(function (x) {
-                if (x)
-                    bot.telegram.sendMessage(userId, x);
-            });
-        }
-    };
     Bot.formatClassData = function (today, subscribedClass) {
-        var rawdata = fs.readFileSync(__dirname + '/' + (today ? 1 : 2) + '.json');
-        var plan = JSON.parse(rawdata);
-        if (plan.classes.includes(subscribedClass)) {
-            var data_1 = [];
-            plan.text.forEach(function (x) {
-                if (x.class.includes(subscribedClass)) {
-                    data_1.push((today ? 'Heute' : 'Morgen') + " " + subscribedClass + ": Stunde:" + x.hour + " Fach:" + x.lesson + " Raum:" + x.room + " Art:" + x.type + " Text:" + x.more);
+        return __awaiter(this, void 0, void 0, function () {
+            var filePath, plan, data_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        filePath = today ? jsonOnePath : jsonTwoPath;
+                        if (!!fs.existsSync(filePath)) return [3 /*break*/, 2];
+                        return [4 /*yield*/, Bot.triggerPlanUpdate()];
+                    case 1:
+                        _a.sent();
+                        _a.label = 2;
+                    case 2:
+                        plan = JSON.parse(fs.readFileSync(filePath));
+                        if (plan.classes.includes(subscribedClass)) {
+                            data_1 = [];
+                            plan.text.forEach(function (x) {
+                                if (x.class.includes(subscribedClass)) {
+                                    data_1.push((today ? 'Heute' : 'Morgen') + " " + subscribedClass + ": Stunde:" + x.hour + " Fach:" + x.lesson + " Raum:" + x.room + " Art:" + x.type + " Text:" + x.more);
+                                }
+                            });
+                            return [2 /*return*/, data_1];
+                        }
+                        else {
+                            return [2 /*return*/, null];
+                        }
+                        return [2 /*return*/];
                 }
             });
-            return data_1;
-        }
-        else {
-            return null;
-        }
+        });
     };
     Bot.startBot = function () {
         console.log('Cron gestartet');
         new cron_1.CronJob('0,15,30,45 7-8,16-18 * * *', function () {
             console.log('Starte CronJob');
-            Bot.updatePlan().then(function (update) {
-                Bot.sendUpdates(update);
+            Bot.triggerPlanUpdate().then(function (update) {
+                Bot.triggerSendAllUpdates(update);
             });
         }, function () {
         }, true, 'Europe/Berlin');

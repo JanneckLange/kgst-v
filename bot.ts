@@ -7,10 +7,14 @@ const request = require('request');
 const pdf = require('pdf-parse');
 
 const nodeBot = require('telegraf');
-const bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
+const bot = new nodeBot("667639490:AAFviTUYsBW3RM3zHBjfWXgWQ1YjsIkswqc");
 
 let userFilePath = './user.txt';
 let subscriberPath = './subscriber.txt';
+let pdfOnePath = './1.pdf';
+let pdfTwoPath = './2.pdf';
+let jsonOnePath = './1.json';
+let jsonTwoPath = './2.json';
 
 bot.start((ctx) => {
     ctx.reply('Willkommen!\nSieht so aus als würdest du gerne den Vertretungsplan der KGST sehen. \n' +
@@ -27,13 +31,13 @@ bot.help((ctx) => {
 
 //check if new plans are online and send updated plan(s)
 bot.command('update', (ctx) => {
-    Bot.updatePlan().then((update) => {
+    Bot.triggerPlanUpdate().then((update) => {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
-            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+            Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
         }
         if (update == 3 || update == 1) {
-            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+            Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
         }
     });
 });
@@ -50,7 +54,7 @@ bot.command('subscribe', ctx => {
                 ctx.reply('Sie sind beriets registriert');
             }
             setTimeout(() => {
-                Bot.sendToUserClassUpdate(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id'])
+                Bot.sendClassUpdateToSubscriber(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id'])
             }, 1000)
         });
     }
@@ -68,8 +72,8 @@ bot.command('subscribe', ctx => {
         setTimeout(() => {
             ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
             setTimeout(() => {
-                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
-                Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
+                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
             }, 500)
         }, 500);
     }
@@ -82,23 +86,49 @@ bot.command('unsubscribe', ctx => {
 
 //send plan 1 from storage
 bot.command('1', (ctx) => {
-    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
+    Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 
 //send plan 2 from storage
 bot.command('2', (ctx) => {
-    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
+    Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
 
-bot.command('class',(ctx)=>{
-    Bot.readFileToArray(subscriberPath).then(arr => {
-        arr.forEach(data => {
-            if(`${data.split(' ')[0]}` === `${ctx['update']['message']['from']['id']}`){
-                Bot.sendToUserClassUpdate(3, data.split(' ')[1], ctx['update']['message']['from']['id'])
+bot.command('class', (ctx) => {
+    if (fs.existsSync(subscriberPath)) {
+        let count = 0;
+        Bot.readFileToArray(subscriberPath).then(arr => {
+            arr.forEach(data => {
+                if (`${data.split(' ')[0]}` === `${ctx['update']['message']['from']['id']}`) {
+                    Bot.sendClassUpdateToSubscriber(3, data.split(' ')[1], ctx['update']['message']['from']['id']);
+                    count++;
+                }
+            });
+            if (!count) {
+                sendReply();
             }
         });
-    });
+    } else {
+        sendReply();
+    }
+
+    function sendReply() {
+        ctx.reply('Du hast keine Klasse Aboniert.');
+        sendSubscribeClassTutorial(ctx);
+    }
 });
+
+function sendSubscribeClassTutorial(ctx) {
+    ctx.reply('Tutorial noch nicht fertig.');
+}
+
+function sendSubscribePlanTutorial(ctx) {
+    ctx.reply('Tutorial noch nicht fertig.');
+}
+
+function sendGetDataNowTutorial(ctx){
+    ctx.reply('Tutorial noch nicht fertig.');
+}
 
 bot.launch();
 
@@ -112,7 +142,71 @@ class Bot {
         Bot.startBot();
     }
 
-    static parsePDFToJson(today: boolean) {
+    /**
+     * 3: beide
+     * 2: nur 2
+     * 1: nur 1
+     * 0: keiner
+     */
+    static async triggerPlanUpdate(): Promise<number> {
+        let one = await Bot.loadAndSavePdqPlanWhenNecessary(true);
+        if (one) {
+            Bot.parsePdfPlanToJsonPlanAndSave(true);
+        }
+        let two = await Bot.loadAndSavePdqPlanWhenNecessary(false);
+        if (two) {
+            Bot.parsePdfPlanToJsonPlanAndSave(false);
+        }
+        return (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0;
+    }
+
+    /**
+     * Lade Vertretungsplan und speichere ihn im Grundpfad
+     * @param {boolean} today
+     */
+    static loadAndSavePdqPlanWhenNecessary(today: boolean): Promise<boolean> {
+        return new Promise((res, rej) => {
+            request({
+                uri: 'https://www.kgs-tornesch.de/Vertretungsplan/Online' + (today ? 1 : 2) + '.pdf',
+                headers: {
+                    'Content-type': 'applcation/pdf',
+                    'Authorization': 'Basic S0dTOlRvcm5lc2No'
+                },
+                encoding: null,
+                authorization: {
+                    username: 'KGS',
+                    password: 'Tornesch'
+                }
+            }, function (error, response, body) {
+                if (!error && response.statusCode === 200) {
+                    let file = (today ? pdfOnePath : pdfTwoPath);
+                    fs.writeFileSync(file, body, 'binary');
+                    let filesize = Bot.getFileSizeInBytes(file);
+
+                    if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
+                        console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
+                        res(false);
+                    } else {
+                        //todo decide my creation date
+                        console.log('update file ' + file + ' (' + filesize + 'bytes)');
+                        today ? Bot.filesizeToday = filesize : Bot.filezizeTomorow = filesize;
+                        res(true);
+                    }
+                } else {
+                    console.log(error);
+                    rej();
+                }
+            });
+        });
+
+
+    }
+
+    /**
+     * Wandle Pdj in Text um und erstelle Vertretungsplan als Json
+     * @param {boolean} today
+     * */
+    static parsePdfPlanToJsonPlanAndSave(today: boolean) {
         const classReg = /([56789]|[1][0123])[a-z]+/g;
         const hourReg = /\d{1,2}( - \d{1,2})*/;
         const kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
@@ -121,8 +215,7 @@ class Bot {
         const removeReg = /\s\(\w{2,3}\)/g;
 
         return new Promise((res, rej) => {
-            const pdf_path = __dirname + '\\' + (today ? 1 : 2) + '.pdf';
-            let dataBuffer = fs.readFileSync(pdf_path);
+            let dataBuffer = fs.readFileSync((today ? pdfOnePath : pdfTwoPath));
             pdf(dataBuffer).then(function (data) {
                 let allText = data.text.split('\n');
                 let text = [];
@@ -144,10 +237,6 @@ class Bot {
                                 classes = classLetters.map(x => classNumber + x);
                             }
                             allClasses.push(classes);
-                            // console.log(classes)
-                            // console.log(m)
-                            // console.log(el)
-                            // console.log('________________________')
                             let hour = el.slice(m.length, el.length).match(hourReg)[0];
 
                             let lesson = el.match(kgsReg);
@@ -190,52 +279,96 @@ class Bot {
                     text: text
                 };
                 // console.log(obj);
-                fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
+                fs.writeFileSync((today ? jsonOnePath : jsonTwoPath), JSON.stringify(obj), 'binary');
                 res(obj);
             });
         })
     }
 
+    static triggerSendAllUpdates(update: number) {
+        Bot.sendPdfFileUpdateToAllUser(update);
+        Bot.sendClassUpdateToAllSubscriber(update);
+    }
+
     /**
-     * Lade Vertretungsplan und speichere ihn im Grundpfad
-     * @param {boolean} today
+     * send updated plans to user
+     * @param update
      */
-    static loadPlan(today: boolean): Promise<boolean> {
-        return new Promise((res, rej) => {
-            request({
-                uri: 'https://www.kgs-tornesch.de/Vertretungsplan/Online' + (today ? 1 : 2) + '.pdf',
-                headers: {
-                    'Content-type': 'applcation/pdf',
-                    'Authorization': 'Basic S0dTOlRvcm5lc2No'
-                },
-                encoding: null,
-                authorization: {
-                    username: 'KGS',
-                    password: 'Tornesch'
-                }
-            }, function (error, response, body) {
-                if (!error && response.statusCode === 200) {
-                    let file = (today ? 1 : 2) + '.pdf';
-                    fs.writeFileSync(file, body, 'binary');
-                    let filesize = Bot.getFileSizeInBytes(file);
-
-                    if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
-                        console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
-                        res(false);
-                    } else {
-                        console.log('update file ' + file + ' (' + filesize + ')');
-                        today ? Bot.filesizeToday = filesize : Bot.filezizeTomorow = filesize;
-                        res(true);
+    static sendPdfFileUpdateToAllUser(update: number) {
+        if (fs.existsSync(userFilePath)) {
+            Bot.readFileToArray(userFilePath).then(arr => {
+                arr.forEach((chatId => {
+                    if (update == 3 || update == 2) {
+                        Bot.sendPdfPlanToUser(chatId, false);
                     }
-                } else {
-                    console.log(error);
-                    rej();
-                }
-            });
-        });
-
+                    if (update == 3 || update == 1) {
+                        Bot.sendPdfPlanToUser(chatId, true);
+                    }
+                }))
+            })
+        } else {
+            console.error(userFilePath + ' did not exist.')
+        }
 
     }
+
+    /**
+     * sende Datei an nutzer
+     * @param {number} chatId
+     * @param today
+     */
+    static async sendPdfPlanToUser(chatId: string, today: boolean) {
+        const filename = today ? pdfOnePath : pdfTwoPath;
+
+        if (!fs.existsSync(filename)) {
+            await Bot.triggerPlanUpdate();
+        }
+        await bot.telegram.sendDocument(chatId, {
+            source: fs.createReadStream(filename),
+            filename: (today ? 1 : 2) + '.pdf'
+        });
+    }
+
+    /**
+     * send updated classes to subscriber
+     * @param update
+     */
+    static sendClassUpdateToAllSubscriber(update: number) {
+        if (fs.existsSync(subscriberPath)) {
+            Bot.readFileToArray(subscriberPath).then(arr => {
+                arr.forEach(user => {
+                    Bot.sendClassUpdateToSubscriber(update, user.split(' ')[1], user.split(' ')[0]);
+                });
+            });
+        } else {
+            console.error(subscriberPath + ' did not exist');
+        }
+
+    }
+
+    /**
+     * send class update to user
+     * @param {number} update
+     * @param {string} subscribedClass
+     * @param {string} userId
+     */
+    static sendClassUpdateToSubscriber(update: number, subscribedClass: string, userId: string) {
+        let data = [];
+        if (update == 3 || update == 2) {
+            data = data.concat(Bot.formatClassData(false, subscribedClass));
+        }
+        if (update == 3 || update == 1) {
+            data = data.concat(Bot.formatClassData(true, subscribedClass));
+        }
+        if (data) {
+            data.forEach(x => {
+                if (x) {
+                    bot.telegram.sendMessage(userId, x);
+                }
+            });
+        }
+    }
+
 
     /**
      * get filesize in bytes
@@ -247,41 +380,6 @@ class Bot {
         }
         const stats = fs.statSync(filename);
         return stats.size;
-    }
-
-    /**
-     * sende Datei an nutzer
-     * @param {number} chatId
-     * @param today
-     */
-    static sendPdfPlan(chatId: string, today: boolean) {
-        try {
-            if (fs.existsSync(__dirname + '/' + (today ? 1 : 2) + '.pdf')) {
-                bot.telegram.sendDocument(chatId, {
-                    source: fs.createReadStream(__dirname + '/' + (today ? 1 : 2) + '.pdf'),
-                    filename: (today ? 1 : 2) + '.pdf'
-                });
-            }
-        } catch (e) {
-        }
-    }
-
-    /**
-     * 3: beide
-     * 2: nur 2
-     * 1: nur 1
-     * 0: keiner
-     */
-    static async updatePlan(): Promise<number> {
-        let one = await Bot.loadPlan(true);
-        if (one) {
-            Bot.parsePDFToJson(true);
-        }
-        let two = await Bot.loadPlan(false);
-        if (two) {
-            Bot.parsePDFToJson(false);
-        }
-        return (one || two) ? ((one && two) ? 3 : (one ? 1 : 2)) : 0;
     }
 
     /**
@@ -310,65 +408,13 @@ class Bot {
 
     }
 
-    static sendUpdates(update: number) {
-        Bot.updateGlobal(update);
-        Bot.updateClass(update);
-    }
-
-    /**
-     * send updated plans to user
-     * @param update
-     */
-    static updateGlobal(update: number) {
-        Bot.readFileToArray(userFilePath).then(arr => {
-            arr.forEach((chatId => {
-                if (update == 3 || update == 2) {
-                    Bot.sendPdfPlan(chatId, false);
-                }
-                if (update == 3 || update == 1) {
-                    Bot.sendPdfPlan(chatId, true);
-                }
-            }))
-        })
-    }
-
-    /**
-     * send updated classes to subscriber
-     * @param update
-     */
-    static updateClass(update: number) {
-        Bot.readFileToArray(subscriberPath).then(arr => {
-            arr.forEach(user => {
-                Bot.sendToUserClassUpdate(update, user.split(' ')[1], user.split(' ')[0]);
-            });
-        });
-    }
-
-    /**
-     * send class update to user
-     * @param {number} update
-     * @param {string} subscribedClass
-     * @param {string} userId
-     */
-    static sendToUserClassUpdate(update: number, subscribedClass: string, userId: string) {
-        let data = [];
-        if (update == 3 || update == 2) {
-            data = data.concat(Bot.formatClassData(false, subscribedClass));
+    static async formatClassData(today: boolean, subscribedClass: string) {
+        const filePath = today ? jsonOnePath : jsonTwoPath;
+        if (!fs.existsSync(filePath)) {
+            await Bot.triggerPlanUpdate();
         }
-        if (update == 3 || update == 1) {
-            data = data.concat(Bot.formatClassData(true, subscribedClass));
-        }
-        if (data) {
-            data.forEach(x => {
-                if (x)
-                    bot.telegram.sendMessage(userId, x);
-            });
-        }
-    }
 
-    static formatClassData(today: boolean, subscribedClass: string) {
-        let rawdata = fs.readFileSync(__dirname + '/' + (today ? 1 : 2) + '.json');
-        let plan = JSON.parse(rawdata);
+        let plan = JSON.parse(fs.readFileSync(filePath));
         if (plan.classes.includes(subscribedClass)) {
             let data = [];
             plan.text.forEach(x => {
@@ -386,8 +432,8 @@ class Bot {
         console.log('Cron gestartet');
         new CronJob('0,15,30,45 7-8,16-18 * * *', () => {
             console.log('Starte CronJob');
-            Bot.updatePlan().then(update => {
-                Bot.sendUpdates(update);
+            Bot.triggerPlanUpdate().then(update => {
+                Bot.triggerSendAllUpdates(update);
             })
         }, () => {
         }, true, 'Europe/Berlin');
