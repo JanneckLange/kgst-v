@@ -34,6 +34,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var _this = this;
 Object.defineProperty(exports, "__esModule", { value: true });
 var cron_1 = require("cron");
 var stream = require('stream');
@@ -42,26 +43,54 @@ var fs = require('fs');
 var request = require('request');
 var pdf = require('pdf-parse');
 var nodeBot = require('telegraf');
-var bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
+var bot = new nodeBot("667639490:AAFviTUYsBW3RM3zHBjfWXgWQ1YjsIkswqc");
 var userFilePath = './user.txt';
 var subscriberPath = './subscriber.txt';
 var pdfOnePath = './1.pdf';
 var pdfTwoPath = './2.pdf';
 var jsonOnePath = './1.json';
 var jsonTwoPath = './2.json';
+var helpCommand = 'hilfe';
+var updateCommand = 'update';
+var subscribeCommand = 'upToDate';
+var subscribeClassCommand = 'upToDate';
+var unsubscribeCommand = 'cancel';
+var unsubscribeClassCommand = 'cancel';
+var plan1Command = 'plan1';
+var plan2Command = 'plan2';
+var classCommand = 'klasse';
+var tutorialCommand = 'anleitung';
+//show first text
 bot.start(function (ctx) {
-    ctx.reply('Willkommen!\nSieht so aus als würdest du gerne den Vertretungsplan der KGST sehen. \n' +
-        'Mit dem Befehlen /1 oder /2 bekommst du den ganzen Plan als PDF.\n' +
-        'Wenn du immer automatisch den neuesten zugesendet bekommen willst /subscribe doch einfach.\n' +
-        'Wenn du nur die Infos einer bestimmten Klasse haben willst, dann sende die Klasse mit (z.B.: /subscribe 5f)');
+    sendWelcome(ctx);
 });
+//send help
 bot.help(function (ctx) {
-    ctx.reply('Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.');
-    ctx.reply('Mit "/1" wird der erste und mit "/2" der zweite Plan geladen. Dabei kann es vorkommen, dass die Pläne noch nicht mit denen der KGST aktuallisiert worden sind. Mit "/update" wird eine aktuallisierung erzwungen.');
-    ctx.reply('Der Bot befindet sich in einer noch sehr frühen Phase der Entwicklung. Es kann daher noch zu fehlern kommen, ich bitte dies zu entschuldigen.');
+    sendHelp(ctx);
 });
+//show /hilfe (same as /help)
+bot.command(helpCommand, function (ctx) {
+    sendHelp(ctx);
+});
+//show tutorial
+bot.command(tutorialCommand, function (ctx) { return __awaiter(_this, void 0, void 0, function () {
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, sendGetPlanTutorial(ctx)];
+            case 1:
+                _a.sent();
+                return [4 /*yield*/, sendSubscribePlanTutorial(ctx)];
+            case 2:
+                _a.sent();
+                return [4 /*yield*/, sendSubscribeClassTutorial(ctx)];
+            case 3:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); });
 //check if new plans are online and send updated plan(s)
-bot.command('update', function (ctx) {
+bot.command(updateCommand, function (ctx) {
     Bot.triggerPlanUpdate().then(function (update) {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
@@ -72,7 +101,8 @@ bot.command('update', function (ctx) {
         }
     });
 });
-bot.command('subscribe', function (ctx) {
+//subscribe to plan updates
+bot.command(subscribeCommand, function (ctx) {
     //subscribe to class
     if (ctx['update']['message']['text'].split(' ')[1]) {
         Bot.readFileToArray(subscriberPath).then(function (arr) {
@@ -110,19 +140,27 @@ bot.command('subscribe', function (ctx) {
         }, 500);
     }
 });
-bot.command('unsubscribe', function (ctx) {
-    // ctx['update']['message']['text'].split(' ')[1]
-    ctx.reply('noch nicht verfügbar');
+//unsubscribe from plan updates
+bot.command(unsubscribeCommand, function (ctx) {
+    Bot.removeLineFromTextFile(userFilePath, ctx['update']['message']['from']['id']);
+    ctx.reply('Alles klar, ich sende dir keine Vertretungspläne mehr 🙁');
+});
+//subscribe to class
+bot.command(subscribeClassCommand, function (ctx) {
+});
+//unsubscribe from class
+bot.command(unsubscribeClassCommand, function (ctx) {
 });
 //send plan 1 from storage
-bot.command('1', function (ctx) {
+bot.command(plan1Command, function (ctx) {
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 //send plan 2 from storage
-bot.command('2', function (ctx) {
+bot.command(plan2Command, function (ctx) {
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
-bot.command('class', function (ctx) {
+//send class info when registered
+bot.command(classCommand, function (ctx) {
     if (fs.existsSync(subscriberPath)) {
         var count_1 = 0;
         Bot.readFileToArray(subscriberPath).then(function (arr) {
@@ -146,14 +184,75 @@ bot.command('class', function (ctx) {
         sendSubscribeClassTutorial(ctx);
     }
 });
+function sendWelcome(ctx) {
+    ctx.reply('Willkommen!\n' +
+        '🤖 Ich stehe dir nun zu diensten, darf ich zeigen wie alles Funktioniert? Dann klick auf /' + tutorialCommand + '');
+}
+function sendHelp(ctx) {
+    return __awaiter(this, void 0, void 0, function () {
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, ctx.reply('⚠️ Ich bin noch neu hier. Es kann also sein, dass ich mal einen Fehler mache, ich gebe aber mein bestes. 🤖')];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, ctx.reply('❓ In Zukunft kannst du mir hier auch Fragen stellen, ich helfe dir dann weiter. Bis dahin muss die /' + tutorialCommand + ' ausreichen.')];
+                case 2:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    });
+}
 function sendSubscribeClassTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+    return __awaiter(this, void 0, void 0, function () {
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, ctx.reply('--- Klasse abonieren ---\n' +
+                        'Eigentlich brauchst du doch gar nicht den ganzen Vertretungsplan. Ich kann dir auch einfach bescheit sagen, wenn es etwas interessantes für dich gibt.')];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, ctx.reply('Wenn du /' + subscribeClassCommand + ' eingibst speichere ich mir deine Klasse und sende dir deinen eigenen Vertretungsplan zu.')];
+                case 2:
+                    _a.sent();
+                    return [4 /*yield*/, ctx.reply('⛔️ Mit dem Befehl /' + unsubscribeClassCommand + ' lösche ich deine Daten wieder.')];
+                case 3:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    });
 }
 function sendSubscribePlanTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+    return __awaiter(this, void 0, void 0, function () {
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, ctx.reply('--- Plan abonieren ---\n' +
+                        'Wenn du immer alle neusten Vertretungspläne (PDF) erhaten möchtest, klicke auf /' + subscribeCommand + ' und ich sende dir den Plan automatisch zu, sobald es einen neuen gibt.')];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, ctx.reply('⛔️ Sollte es dir irgendwann zu viel werden, dann klicke auf /' + unsubscribeCommand + ' und ich sende dir keine Pläne mehr zu.')];
+                case 2:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    });
 }
-function sendGetDataNowTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+function sendGetPlanTutorial(ctx) {
+    return __awaiter(this, void 0, void 0, function () {
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, ctx.reply('--- Einmalig laden ---\n' +
+                        'Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.')];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, ctx.reply('Mit dem Befehlen /' + plan1Command + ' oder /' + plan2Command + ' sende ich dir den Vertretungsplan als PDF wie er auch auf der Webseite verfügbar ist.')];
+                case 2:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    });
 }
 bot.launch();
 var Bot = /** @class */ (function () {
@@ -448,6 +547,18 @@ var Bot = /** @class */ (function () {
         else {
             return null;
         }
+    };
+    Bot.removeLineFromTextFile = function (filename, remove) {
+        fs.readFile(filename, 'utf8', function (err, data) {
+            if (err) {
+                throw err;
+            }
+            var document = data.split('\n');
+            var index = document.indexOf("" + remove);
+            document.splice(index, 1);
+            document = document.join('\n');
+            fs.writeFile(filename, document, function () { });
+        });
     };
     Bot.startBot = function () {
         console.log('Cron gestartet');

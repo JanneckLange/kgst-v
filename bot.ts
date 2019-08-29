@@ -9,28 +9,48 @@ const pdf = require('pdf-parse');
 const nodeBot = require('telegraf');
 const bot = new nodeBot("667639490:AAFviTUYsBW3RM3zHBjfWXgWQ1YjsIkswqc");
 
-let userFilePath = './user.txt';
-let subscriberPath = './subscriber.txt';
-let pdfOnePath = './1.pdf';
-let pdfTwoPath = './2.pdf';
-let jsonOnePath = './1.json';
-let jsonTwoPath = './2.json';
+const userFilePath = './user.txt';
+const subscriberPath = './subscriber.txt';
+const pdfOnePath = './1.pdf';
+const pdfTwoPath = './2.pdf';
+const jsonOnePath = './1.json';
+const jsonTwoPath = './2.json';
 
+const helpCommand = 'hilfe';
+const updateCommand = 'update';
+const subscribeCommand = 'upToDate';
+const subscribeClassCommand = 'upToDate';
+const unsubscribeCommand = 'cancel';
+const unsubscribeClassCommand = 'cancel';
+const plan1Command = 'plan1';
+const plan2Command = 'plan2';
+const classCommand = 'klasse';
+const tutorialCommand = 'anleitung';
+
+//show first text
 bot.start((ctx) => {
-    ctx.reply('Willkommen!\nSieht so aus als würdest du gerne den Vertretungsplan der KGST sehen. \n' +
-        'Mit dem Befehlen /1 oder /2 bekommst du den ganzen Plan als PDF.\n' +
-        'Wenn du immer automatisch den neuesten zugesendet bekommen willst /subscribe doch einfach.\n' +
-        'Wenn du nur die Infos einer bestimmten Klasse haben willst, dann sende die Klasse mit (z.B.: /subscribe 5f)');
+    sendWelcome(ctx);
 });
 
+//send help
 bot.help((ctx) => {
-    ctx.reply('Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.');
-    ctx.reply('Mit "/1" wird der erste und mit "/2" der zweite Plan geladen. Dabei kann es vorkommen, dass die Pläne noch nicht mit denen der KGST aktuallisiert worden sind. Mit "/update" wird eine aktuallisierung erzwungen.');
-    ctx.reply('Der Bot befindet sich in einer noch sehr frühen Phase der Entwicklung. Es kann daher noch zu fehlern kommen, ich bitte dies zu entschuldigen.');
+    sendHelp(ctx);
+});
+
+//show /hilfe (same as /help)
+bot.command(helpCommand, ctx => {
+    sendHelp(ctx);
+});
+
+//show tutorial
+bot.command(tutorialCommand, async ctx => {
+    await sendGetPlanTutorial(ctx);
+    await sendSubscribePlanTutorial(ctx);
+    await sendSubscribeClassTutorial(ctx);
 });
 
 //check if new plans are online and send updated plan(s)
-bot.command('update', (ctx) => {
+bot.command(updateCommand, (ctx) => {
     Bot.triggerPlanUpdate().then((update) => {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
@@ -42,7 +62,8 @@ bot.command('update', (ctx) => {
     });
 });
 
-bot.command('subscribe', ctx => {
+//subscribe to plan updates
+bot.command(subscribeCommand, ctx => {
     //subscribe to class
     if (ctx['update']['message']['text'].split(' ')[1]) {
         Bot.readFileToArray(subscriberPath).then(arr => {
@@ -79,22 +100,33 @@ bot.command('subscribe', ctx => {
     }
 });
 
-bot.command('unsubscribe', ctx => {
-    // ctx['update']['message']['text'].split(' ')[1]
-    ctx.reply('noch nicht verfügbar');
+//unsubscribe from plan updates
+bot.command(unsubscribeCommand, ctx => {
+    Bot.removeLineFromTextFile(userFilePath, ctx['update']['message']['from']['id']);
+    ctx.reply('Alles klar, ich sende dir keine Vertretungspläne mehr 🙁')
 });
 
+//subscribe to class
+bot.command(subscribeClassCommand, ctx => {
+
+});
+
+//unsubscribe from class
+bot.command(unsubscribeClassCommand, ctx => {
+
+});
 //send plan 1 from storage
-bot.command('1', (ctx) => {
+bot.command(plan1Command, (ctx) => {
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 
 //send plan 2 from storage
-bot.command('2', (ctx) => {
+bot.command(plan2Command, (ctx) => {
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
 
-bot.command('class', (ctx) => {
+//send class info when registered
+bot.command(classCommand, (ctx) => {
     if (fs.existsSync(subscriberPath)) {
         let count = 0;
         Bot.readFileToArray(subscriberPath).then(arr => {
@@ -119,16 +151,33 @@ bot.command('class', (ctx) => {
     }
 });
 
-function sendSubscribeClassTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+function sendWelcome(ctx) {
+    ctx.reply('Willkommen!\n' +
+        '🤖 Ich stehe dir nun zu diensten, darf ich zeigen wie alles Funktioniert? Dann klick auf /' + tutorialCommand + '');
 }
 
-function sendSubscribePlanTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+async function sendHelp(ctx) {
+    await ctx.reply('⚠️ Ich bin noch neu hier. Es kann also sein, dass ich mal einen Fehler mache, ich gebe aber mein bestes. 🤖');
+    await ctx.reply('❓ In Zukunft kannst du mir hier auch Fragen stellen, ich helfe dir dann weiter. Bis dahin muss die /' + tutorialCommand + ' ausreichen.');
 }
 
-function sendGetDataNowTutorial(ctx) {
-    ctx.reply('Tutorial noch nicht fertig.');
+async function sendSubscribeClassTutorial(ctx) {
+    await ctx.reply('--- Klasse abonieren ---\n' +
+        'Eigentlich brauchst du doch gar nicht den ganzen Vertretungsplan. Ich kann dir auch einfach bescheit sagen, wenn es etwas interessantes für dich gibt.');
+    await ctx.reply('Wenn du /' + subscribeClassCommand + ' eingibst speichere ich mir deine Klasse und sende dir deinen eigenen Vertretungsplan zu.');
+    await ctx.reply('⛔️ Mit dem Befehl /' + unsubscribeClassCommand + ' lösche ich deine Daten wieder.');
+}
+
+async function sendSubscribePlanTutorial(ctx) {
+    await ctx.reply('--- Plan abonieren ---\n' +
+        'Wenn du immer alle neusten Vertretungspläne (PDF) erhaten möchtest, klicke auf /' + subscribeCommand + ' und ich sende dir den Plan automatisch zu, sobald es einen neuen gibt.');
+    await ctx.reply('⛔️ Sollte es dir irgendwann zu viel werden, dann klicke auf /' + unsubscribeCommand + ' und ich sende dir keine Pläne mehr zu.');
+}
+
+async function sendGetPlanTutorial(ctx) {
+    await ctx.reply('--- Einmalig laden ---\n' +
+        'Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.');
+    await ctx.reply('Mit dem Befehlen /' + plan1Command + ' oder /' + plan2Command + ' sende ich dir den Vertretungsplan als PDF wie er auch auf der Webseite verfügbar ist.');
 }
 
 bot.launch();
@@ -428,6 +477,19 @@ class Bot {
         } else {
             return null;
         }
+    }
+
+    static removeLineFromTextFile(filename, remove) {
+        fs.readFile(filename, 'utf8', function (err, data) {
+            if (err) {
+                throw err;
+            }
+            let document = data.split('\n');
+            const index = document.indexOf(`${remove}`);
+            document.splice(index,1);
+            document = document.join('\n');
+            fs.writeFile(filename, document,()=>{});
+        });
     }
 
     private static startBot() {
