@@ -6,7 +6,7 @@ const fs = require('fs');
 const request = require('request');
 
 const nodeBot = require('telegraf');
-const bot = new nodeBot("667639490:AAFBuY8_6zuRsFAbeF5CPQCsLmUn5x_zDV8");
+const bot = new nodeBot("XXX");
 
 bot.start((ctx) => {
     console.log();

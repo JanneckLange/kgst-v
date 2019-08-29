@@ -41,7 +41,7 @@ var readline = require('readline');
 var fs = require('fs');
 var request = require('request');
 var nodeBot = require('telegraf');
-var bot = new nodeBot("667639490:AAFBuY8_6zuRsFAbeF5CPQCsLmUn5x_zDV8");
+var bot = new nodeBot("XXX");
 bot.start(function (ctx) {
     console.log();
     Bot.readFileToArray().then(function (arr) {
