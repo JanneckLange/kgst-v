@@ -36,16 +36,30 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 var cron_1 = require("cron");
-var moment = require('moment');
+var stream = require('stream');
+var readline = require('readline');
 var fs = require('fs');
 var request = require('request');
 var nodeBot = require('telegraf');
 var bot = new nodeBot("667639490:AAFBuY8_6zuRsFAbeF5CPQCsLmUn5x_zDV8");
 bot.start(function (ctx) {
-    console.log(ctx['update']['message']['from']['id']);
-    ctx.reply('Welcome');
+    console.log();
+    Bot.readFileToArray().then(function (arr) {
+        if (!arr.includes('' + ctx['update']['message']['from']['id'])) {
+            fs.appendFileSync('user.txt', ctx['update']['message']['from']['id'] + '\n');
+            ctx.reply('Hallo, du erhälst nun regemmäßig die neusten Vertretungspläne.');
+        }
+        else {
+            ctx.reply('Willkommen zurück, du erhälst nun wieder regemmäßig die neusten Vertretungspläne.');
+        }
+    });
 });
-bot.help(function (ctx) { return ctx.reply('Hilfe noch nicht verfügbar'); });
+bot.help(function (ctx) {
+    ctx.reply('Der Bot hat dich gespeichert und sendet dir nun automatisch die aktuellsten Vertretungspläne zu.');
+    ctx.reply('Der Bot läd die Vertretungspläne von der Webseite der KGST (https://www.kgs-tornesch.de/vetretretungsplan.html). Es besteht kein Anspruch auf Vollständigkeit oder Korrektheit der Daten.');
+    ctx.reply('Mit "/1" wird der erste und mit "/2" der zweite Plan geladen. Dabei kann es vorkommen, dass die Pläne noch nicht mit denen der KGST aktuallisiert worden sind. Mit "/update" wird eine aktuallisierung erzwungen.');
+    ctx.reply('Der Bot befindet sich in einer noch sehr frühen Phase der Entwicklung. Es kann daher noch zu fehlern kommen, ich bitte dies zu entschuldigen.');
+});
 //check if new plans are online and send updated plan(s)
 bot.command('update', function (ctx) {
     Bot.updatePlan().then(function (update) {
@@ -112,6 +126,10 @@ var Bot = /** @class */ (function () {
             });
         });
     };
+    /**
+     * get filesize in bytes
+     * @param filename
+     */
     Bot.getFilesizeInBytes = function (filename) {
         if (!fs.existsSync(filename)) {
             return 0;
@@ -158,17 +176,46 @@ var Bot = /** @class */ (function () {
             });
         });
     };
+    /**
+     * lese die user.txt file in ein array
+     */
+    Bot.readFileToArray = function () {
+        return new Promise(function (res, rej) {
+            var filename = './user.txt';
+            if (fs.existsSync(filename)) {
+                var instream = fs.createReadStream(filename);
+                var outstream = new stream;
+                var rl = readline.createInterface(instream, outstream);
+                var arr_1 = [];
+                rl.on('line', function (line) {
+                    // process line here
+                    arr_1.push(line);
+                });
+                rl.on('close', function () {
+                    // do something on finish here
+                    res(arr_1);
+                });
+            }
+            else {
+                res([]);
+            }
+        });
+    };
     Bot.startBot = function () {
         console.log('Cron gestartet');
         new cron_1.CronJob('0,15,30,45 7-8,16-18 * * *', function () {
+            console.log('Starte CronJob');
             Bot.updatePlan().then(function (update) {
-                //todo send to all users with activated updates
-                // if (update == 3 || update == 2) {
-                //     Bot.sendPlan(ctx['update']['message']['from']['id'], false);
-                // }
-                // if (update == 3 || update == 1) {
-                //     Bot.sendPlan(ctx['update']['message']['from']['id'], true);
-                // }
+                Bot.readFileToArray().then(function (arr) {
+                    arr.forEach((function (el) {
+                        if (update == 3 || update == 2) {
+                            Bot.sendPlan(el, false);
+                        }
+                        if (update == 3 || update == 1) {
+                            Bot.sendPlan(el, true);
+                        }
+                    }));
+                });
             });
         }, function () {
         }, true, 'Europe/Berlin');
