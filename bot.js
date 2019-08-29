@@ -50,33 +50,53 @@ var pdfOnePath = './1.pdf';
 var pdfTwoPath = './2.pdf';
 var jsonOnePath = './1.json';
 var jsonTwoPath = './2.json';
+var logPath = './log.txt';
+var plan1Command = 'plan1'; // Aktueller Plan
+var plan2Command = 'plan2'; // Nächster Plan
+var subscribeClassCommand = 'joinclass'; // Klassenupdates erhalten
+var unsubscribeClassCommand = 'leaveclass'; //keine Klassenupdates mehr
+var subscribeCommand = 'join'; // Updates erhlten
+var unsubscribeCommand = 'leave'; // keine pdates erhlten
+var classCommand = 'klasse';
+var tutorialCommand = 'anleitung'; // Wie funktioniert das?
 var helpCommand = 'hilfe';
 var updateCommand = 'update';
-var subscribeCommand = 'upToDate';
-var subscribeClassCommand = 'upToDate';
-var unsubscribeCommand = 'cancel';
-var unsubscribeClassCommand = 'cancel';
-var plan1Command = 'plan1';
-var plan2Command = 'plan2';
-var classCommand = 'klasse';
-var tutorialCommand = 'anleitung';
+var classSelectionFinalAction = '';
+var classes = {
+    '5': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    '6': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    '7': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+    '8': ['a', 'b', 'c', 'd', 'e', 'f'],
+    '9': ['a', 'b', 'c', 'd', 'e', 'f'],
+    '10': ['a', 'b', 'c', 'd', 'e', 'g'],
+    '11': ['a', 'b', 'c'],
+    '12': ['a', 'b', 'c'],
+    '13': ['a', 'b', 'c', 'd'],
+    'DAZ': ['-Klasse', '-Aufbau'],
+};
+log('-----------------------------  System start  -----------------------------');
 //show first text
 bot.start(function (ctx) {
+    logUserAction(ctx, 'start');
     sendWelcome(ctx);
 });
 //send help
 bot.help(function (ctx) {
+    logUserAction(ctx, 'help');
     sendHelp(ctx);
 });
 //show /hilfe (same as /help)
 bot.command(helpCommand, function (ctx) {
+    logUserAction(ctx, helpCommand);
     sendHelp(ctx);
 });
 //show tutorial
 bot.command(tutorialCommand, function (ctx) { return __awaiter(_this, void 0, void 0, function () {
     return __generator(this, function (_a) {
         switch (_a.label) {
-            case 0: return [4 /*yield*/, sendGetPlanTutorial(ctx)];
+            case 0:
+                logUserAction(ctx, tutorialCommand);
+                return [4 /*yield*/, sendGetPlanTutorial(ctx)];
             case 1:
                 _a.sent();
                 return [4 /*yield*/, sendSubscribePlanTutorial(ctx)];
@@ -91,6 +111,7 @@ bot.command(tutorialCommand, function (ctx) { return __awaiter(_this, void 0, vo
 }); });
 //check if new plans are online and send updated plan(s)
 bot.command(updateCommand, function (ctx) {
+    logUserAction(ctx, updateCommand);
     Bot.triggerPlanUpdate().then(function (update) {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
@@ -103,64 +124,146 @@ bot.command(updateCommand, function (ctx) {
 });
 //subscribe to plan updates
 bot.command(subscribeCommand, function (ctx) {
-    //subscribe to class
-    if (ctx['update']['message']['text'].split(' ')[1]) {
-        Bot.readFileToArray(subscriberPath).then(function (arr) {
-            var content = ctx['update']['message']['from']['id'] + " " + ctx['update']['message']['text'].split(' ')[1];
-            if (!arr.includes(content)) {
-                fs.appendFileSync(subscriberPath, content + '\n');
-                ctx.reply('Sie erhalten nun updates für die Klasse ' + ctx['update']['message']['text'].split(' ')[1]);
-            }
-            else {
-                ctx.reply('Sie sind beriets registriert');
-            }
-            setTimeout(function () {
-                Bot.sendClassUpdateToSubscriber(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id']);
-            }, 1000);
-        });
-    }
-    //subscribe
-    else {
-        Bot.readFileToArray(userFilePath).then(function (arr) {
-            var content = "" + ctx['update']['message']['from']['id'];
-            if (!arr.includes(content)) {
-                fs.appendFileSync(userFilePath, content + '\n');
-                ctx.reply('Du erhälst nun regemmäßig die neusten Vertretungspläne.');
-            }
-            else {
-                ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
+    logUserAction(ctx, subscribeCommand);
+    Bot.readFileToArray(userFilePath).then(function (arr) { return __awaiter(_this, void 0, void 0, function () {
+        var content;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    content = "" + ctx['update']['message']['from']['id'];
+                    if (!!arr.includes(content)) return [3 /*break*/, 4];
+                    fs.appendFileSync(userFilePath, content + '\n');
+                    return [4 /*yield*/, ctx.reply('Du erhälst nun regelmmäßig die neusten Vertretungspläne.')];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true)];
+                case 2:
+                    _a.sent();
+                    return [4 /*yield*/, Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false)];
+                case 3:
+                    _a.sent();
+                    return [3 /*break*/, 5];
+                case 4:
+                    ctx.reply('Du bist bereits im Verteiler. Wenn du keine Benachrichtigungen mehr willst, klick auf /' + unsubscribeCommand + '');
+                    _a.label = 5;
+                case 5: return [2 /*return*/];
             }
         });
-        setTimeout(function () {
-            ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
-            setTimeout(function () {
-                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
-                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
-            }, 500);
-        }, 500);
-    }
+    }); });
 });
 //unsubscribe from plan updates
 bot.command(unsubscribeCommand, function (ctx) {
+    logUserAction(ctx, unsubscribeCommand);
     Bot.removeLineFromTextFile(userFilePath, ctx['update']['message']['from']['id']);
     ctx.reply('Alles klar, ich sende dir keine Vertretungspläne mehr 🙁');
 });
 //subscribe to class
 bot.command(subscribeClassCommand, function (ctx) {
+    logUserAction(ctx, subscribeClassCommand);
+    classSelectionFinalAction = 'subscribeClass';
+    createAndSendClassLevelList(ctx['update']['message']['from']['id']);
 });
+bot.action(/level-(\d{1,2}|DAZ)/, function (ctx) {
+    logUserAction(ctx, 'select class level ' + ctx['update']['callback_query']['data'].split('-')[1]);
+    // console.logUserAction(`received class level: ${ctx['update']['callback_query']['data']}`);
+    createAndSendClassList(ctx['update']['callback_query']['data'].split('-')[1], ctx['update']['callback_query']['from']['id']);
+});
+bot.action(/class-(\d{1,2}\w|DAZ-Klasse|DAZ-Aufbau)/, function (ctx) {
+    var selectedClass = ctx['update']['callback_query']['data'].split('-')[1];
+    logUserAction(ctx, 'select class ' + selectedClass);
+    // console.logUserAction(`received class: ${selectedClass}`);
+    //final action?
+    switch (classSelectionFinalAction) {
+        case 'subscribeClass':
+            subscribeClass(selectedClass, ctx['update']['callback_query']['from']['id'], ctx);
+            break;
+        case 'unsubscribeClass':
+            unsubscribeClass(selectedClass, ctx['update']['callback_query']['from']['id'], ctx);
+            break;
+        default:
+            ctx.reply('Ups... Ich habe vergessen was ich eigentlich wollte. Versuche es bitte erneut.');
+    }
+});
+function logUserAction(ctx, action) {
+    var userData = ctx['update']['message'] ? ctx['update']['message']['from'] : ctx['update']['callback_query']['from'];
+    fs.appendFileSync(logPath, new Date() + " " + action + " " + userData['id'] + " " + userData['first_name'] + " " + userData['username'] + '\n');
+}
+function log(action) {
+    fs.appendFileSync(logPath, new Date() + " " + action + '\n');
+}
+function createAndSendClassLevelList(userId) {
+    var classLevelKeys = Object.keys(classes);
+    var inlineClassLevel = [[]];
+    for (var i = 0, level = 0, index = 0; i < classLevelKeys.length; i++, index++) {
+        if (index == 4) {
+            level++;
+            index = 0;
+            inlineClassLevel.push([]);
+        }
+        inlineClassLevel[level].push({ text: classLevelKeys[i], callback_data: 'level-' + classLevelKeys[i] });
+    }
+    bot.telegram.sendMessage(userId, 'Für welche Klassenstufe?', { reply_markup: JSON.stringify({ inline_keyboard: inlineClassLevel }) });
+}
+function createAndSendClassList(selectedLevel, userId) {
+    console.log('selectedLevel');
+    console.log(selectedLevel);
+    var classKeys = classes[selectedLevel];
+    var inlineClasses = [[]];
+    for (var i = 0, level = 0, index = 0; i < classKeys.length; i++, index++) {
+        if (index == 4) {
+            level++;
+            index = 0;
+            inlineClasses.push([]);
+        }
+        inlineClasses[level].push({
+            text: selectedLevel + classKeys[i],
+            callback_data: 'class-' + selectedLevel + classKeys[i]
+        });
+    }
+    bot.telegram.sendMessage(userId, 'Für welche Klasse?', { reply_markup: JSON.stringify({ inline_keyboard: inlineClasses }) });
+}
+function subscribeClass(selectedClass, userId, ctx) {
+    //reset final action
+    classSelectionFinalAction = '';
+    Bot.readFileToArray(subscriberPath).then(function (arr) {
+        var content = userId + " " + selectedClass;
+        if (!arr.includes(content)) {
+            fs.appendFileSync(subscriberPath, content + '\n');
+            ctx.reply('Perfekt! Ich sage dir bescheit, wenn es etwas für die ' + selectedClass + ' gibt.');
+        }
+        else {
+            ctx.reply('Du bekommst schon updates für die ' + selectedClass);
+        }
+        setTimeout(function () {
+            Bot.sendClassUpdateToSubscriber(3, selectedClass, userId);
+        }, 500);
+    });
+}
+function unsubscribeClass(selectedClass, userId, ctx) {
+    //reset final action
+    classSelectionFinalAction = '';
+    Bot.removeLineFromTextFile(subscriberPath, userId + " " + selectedClass);
+    ctx.reply('Alles klar, ich sende dir keine Vertretungspläne für die ' + selectedClass + ' mehr 🙁');
+}
 //unsubscribe from class
 bot.command(unsubscribeClassCommand, function (ctx) {
+    logUserAction(ctx, unsubscribeClassCommand);
+    classSelectionFinalAction = 'unsubscribeClass';
+    createAndSendClassLevelList(ctx['update']['message']['from']['id']);
 });
 //send plan 1 from storage
 bot.command(plan1Command, function (ctx) {
+    logUserAction(ctx, plan1Command);
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 //send plan 2 from storage
 bot.command(plan2Command, function (ctx) {
+    logUserAction(ctx, plan2Command);
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
 //send class info when registered
 bot.command(classCommand, function (ctx) {
+    logUserAction(ctx, classCommand);
     if (fs.existsSync(subscriberPath)) {
         var count_1 = 0;
         Bot.readFileToArray(subscriberPath).then(function (arr) {
@@ -183,6 +286,9 @@ bot.command(classCommand, function (ctx) {
         ctx.reply('Du hast keine Klasse Aboniert.');
         sendSubscribeClassTutorial(ctx);
     }
+});
+bot.on('text', function (ctx) {
+    logUserAction(ctx, "unknown command: '" + ctx['update']['message']['text'] + "'");
 });
 function sendWelcome(ctx) {
     ctx.reply('Willkommen!\n' +
@@ -398,7 +504,7 @@ var Bot = /** @class */ (function () {
                     classes: allClasses,
                     text: text
                 };
-                // console.log(obj);
+                // console.logUserAction(obj);
                 fs.writeFileSync((today ? jsonOnePath : jsonTwoPath), JSON.stringify(obj), 'binary');
                 res(obj);
             });
@@ -555,14 +661,18 @@ var Bot = /** @class */ (function () {
             }
             var document = data.split('\n');
             var index = document.indexOf("" + remove);
-            document.splice(index, 1);
-            document = document.join('\n');
-            fs.writeFile(filename, document, function () { });
+            if (index != -1) {
+                document.splice(index, 1);
+                document = document.join('\n');
+                fs.writeFile(filename, document, function () {
+                });
+            }
         });
     };
     Bot.startBot = function () {
         console.log('Cron gestartet');
         new cron_1.CronJob('0,15,30,45 7-8,16-18 * * *', function () {
+            log('CronJob started');
             console.log('Starte CronJob');
             Bot.triggerPlanUpdate().then(function (update) {
                 Bot.triggerSendAllUpdates(update);

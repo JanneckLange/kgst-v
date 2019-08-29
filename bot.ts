@@ -15,35 +15,59 @@ const pdfOnePath = './1.pdf';
 const pdfTwoPath = './2.pdf';
 const jsonOnePath = './1.json';
 const jsonTwoPath = './2.json';
+const logPath = './log.txt';
 
+const plan1Command = 'plan1'; // Aktueller Plan
+const plan2Command = 'plan2'; // Nächster Plan
+const subscribeClassCommand = 'joinclass'; // Klassenupdates erhalten
+const unsubscribeClassCommand = 'leaveclass'; //keine Klassenupdates mehr
+const subscribeCommand = 'join'; // Updates erhlten
+const unsubscribeCommand = 'leave'; // keine pdates erhlten
+const classCommand = 'klasse';
+const tutorialCommand = 'anleitung'; // Wie funktioniert das?
 const helpCommand = 'hilfe';
 const updateCommand = 'update';
-const subscribeCommand = 'upToDate';
-const subscribeClassCommand = 'upToDate';
-const unsubscribeCommand = 'cancel';
-const unsubscribeClassCommand = 'cancel';
-const plan1Command = 'plan1';
-const plan2Command = 'plan2';
-const classCommand = 'klasse';
-const tutorialCommand = 'anleitung';
 
+let classSelectionFinalAction = '';
+
+const classes = {
+    '5': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    '6': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    '7': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+    '8': ['a', 'b', 'c', 'd', 'e', 'f'],
+    '9': ['a', 'b', 'c', 'd', 'e', 'f'],
+    '10': ['a', 'b', 'c', 'd', 'e', 'g'],
+    '11': ['a', 'b', 'c'],
+    '12': ['a', 'b', 'c'],
+    '13': ['a', 'b', 'c', 'd'],
+    'DAZ': ['-Klasse', '-Aufbau'],
+};
+log('-----------------------------  System start  -----------------------------');
 //show first text
 bot.start((ctx) => {
+    logUserAction(ctx, 'start')
+
     sendWelcome(ctx);
 });
 
 //send help
 bot.help((ctx) => {
+    logUserAction(ctx, 'help')
+
     sendHelp(ctx);
 });
 
 //show /hilfe (same as /help)
 bot.command(helpCommand, ctx => {
+    logUserAction(ctx, helpCommand)
+
     sendHelp(ctx);
 });
 
 //show tutorial
 bot.command(tutorialCommand, async ctx => {
+    logUserAction(ctx, tutorialCommand)
+
     await sendGetPlanTutorial(ctx);
     await sendSubscribePlanTutorial(ctx);
     await sendSubscribeClassTutorial(ctx);
@@ -51,6 +75,8 @@ bot.command(tutorialCommand, async ctx => {
 
 //check if new plans are online and send updated plan(s)
 bot.command(updateCommand, (ctx) => {
+    logUserAction(ctx, updateCommand)
+
     Bot.triggerPlanUpdate().then((update) => {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
@@ -64,69 +90,153 @@ bot.command(updateCommand, (ctx) => {
 
 //subscribe to plan updates
 bot.command(subscribeCommand, ctx => {
-    //subscribe to class
-    if (ctx['update']['message']['text'].split(' ')[1]) {
-        Bot.readFileToArray(subscriberPath).then(arr => {
-            let content = `${ctx['update']['message']['from']['id']} ${ctx['update']['message']['text'].split(' ')[1]}`;
-            if (!arr.includes(content)) {
-                fs.appendFileSync(subscriberPath, content + '\n');
-                ctx.reply('Sie erhalten nun updates für die Klasse ' + ctx['update']['message']['text'].split(' ')[1]);
-            } else {
-                ctx.reply('Sie sind beriets registriert');
-            }
-            setTimeout(() => {
-                Bot.sendClassUpdateToSubscriber(3, ctx['update']['message']['text'].split(' ')[1], ctx['update']['message']['from']['id'])
-            }, 1000)
-        });
-    }
-    //subscribe
-    else {
-        Bot.readFileToArray(userFilePath).then(arr => {
-            let content = `${ctx['update']['message']['from']['id']}`;
-            if (!arr.includes(content)) {
-                fs.appendFileSync(userFilePath, content + '\n');
-                ctx.reply('Du erhälst nun regemmäßig die neusten Vertretungspläne.');
-            } else {
-                ctx.reply('Sie sind bereits im Verteiler. Wenn sie keine Benachrichtigungen mehr wollen, dann senden sie /unsubscribe');
-            }
-        });
-        setTimeout(() => {
-            ctx.reply('Wenn du nur Benachrichtigungen für eine Klasse haben willst, dann senden bitte eine Klasse mit. (Bsp.: "/subscribe 8b")');
-            setTimeout(() => {
-                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
-                Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
-            }, 500)
-        }, 500);
-    }
+    logUserAction(ctx, subscribeCommand)
+
+    Bot.readFileToArray(userFilePath).then(async arr => {
+        let content = `${ctx['update']['message']['from']['id']}`;
+        if (!arr.includes(content)) {
+            fs.appendFileSync(userFilePath, content + '\n');
+            await ctx.reply('Du erhälst nun regelmmäßig die neusten Vertretungspläne.');
+            await Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
+            await Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
+        } else {
+            ctx.reply('Du bist bereits im Verteiler. Wenn du keine Benachrichtigungen mehr willst, klick auf /' + unsubscribeCommand + '');
+        }
+    });
 });
 
 //unsubscribe from plan updates
 bot.command(unsubscribeCommand, ctx => {
+    logUserAction(ctx, unsubscribeCommand)
+
     Bot.removeLineFromTextFile(userFilePath, ctx['update']['message']['from']['id']);
     ctx.reply('Alles klar, ich sende dir keine Vertretungspläne mehr 🙁')
 });
 
 //subscribe to class
 bot.command(subscribeClassCommand, ctx => {
+    logUserAction(ctx, subscribeClassCommand)
 
+    classSelectionFinalAction = 'subscribeClass';
+    createAndSendClassLevelList(ctx['update']['message']['from']['id'])
 });
+
+bot.action(/level-(\d{1,2}|DAZ)/, (ctx) => {
+    logUserAction(ctx, 'select class level ' + ctx['update']['callback_query']['data'].split('-')[1]);
+    // console.logUserAction(`received class level: ${ctx['update']['callback_query']['data']}`);
+    createAndSendClassList(ctx['update']['callback_query']['data'].split('-')[1], ctx['update']['callback_query']['from']['id']);
+});
+bot.action(/class-(\d{1,2}\w|DAZ-Klasse|DAZ-Aufbau)/, (ctx) => {
+    let selectedClass = ctx['update']['callback_query']['data'].split('-')[1];
+    logUserAction(ctx, 'select class ' + selectedClass);
+    // console.logUserAction(`received class: ${selectedClass}`);
+
+    //final action?
+    switch (classSelectionFinalAction) {
+        case 'subscribeClass':
+            subscribeClass(selectedClass, ctx['update']['callback_query']['from']['id'], ctx);
+            break;
+        case 'unsubscribeClass':
+            unsubscribeClass(selectedClass, ctx['update']['callback_query']['from']['id'], ctx);
+            break;
+        default:
+            ctx.reply('Ups... Ich habe vergessen was ich eigentlich wollte. Versuche es bitte erneut.');
+    }
+});
+
+function logUserAction(ctx, action) {
+    let userData = ctx['update']['message'] ? ctx['update']['message']['from'] : ctx['update']['callback_query']['from'];
+    fs.appendFileSync(logPath, `${new Date()} ${action} ${userData['id']} ${userData['first_name']} ${userData['username']}` + '\n');
+}
+
+function log(action) {
+    fs.appendFileSync(logPath, `${new Date()} ${action}` + '\n');
+}
+
+function createAndSendClassLevelList(userId) {
+    let classLevelKeys = Object.keys(classes);
+    let inlineClassLevel = [[]];
+    for (let i = 0, level = 0, index = 0; i < classLevelKeys.length; i++, index++) {
+        if (index == 4) {
+            level++;
+            index = 0;
+            inlineClassLevel.push([]);
+        }
+        inlineClassLevel[level].push({text: classLevelKeys[i], callback_data: 'level-' + classLevelKeys[i]});
+    }
+    bot.telegram.sendMessage(userId, 'Für welche Klassenstufe?',
+        {reply_markup: JSON.stringify({inline_keyboard: inlineClassLevel})});
+}
+
+function createAndSendClassList(selectedLevel: string, userId) {
+    console.log('selectedLevel')
+    console.log(selectedLevel)
+    let classKeys = classes[selectedLevel];
+    let inlineClasses = [[]];
+    for (let i = 0, level = 0, index = 0; i < classKeys.length; i++, index++) {
+        if (index == 4) {
+            level++;
+            index = 0;
+            inlineClasses.push([]);
+        }
+        inlineClasses[level].push({
+            text: selectedLevel + classKeys[i],
+            callback_data: 'class-' + selectedLevel + classKeys[i]
+        });
+    }
+    bot.telegram.sendMessage(userId, 'Für welche Klasse?',
+        {reply_markup: JSON.stringify({inline_keyboard: inlineClasses})});
+
+}
+
+function subscribeClass(selectedClass, userId, ctx) {
+    //reset final action
+    classSelectionFinalAction = '';
+    Bot.readFileToArray(subscriberPath).then(arr => {
+        let content = `${userId} ${selectedClass}`;
+        if (!arr.includes(content)) {
+            fs.appendFileSync(subscriberPath, content + '\n');
+            ctx.reply('Perfekt! Ich sage dir bescheit, wenn es etwas für die ' + selectedClass + ' gibt.')
+        } else {
+            ctx.reply('Du bekommst schon updates für die ' + selectedClass);
+        }
+        setTimeout(() => {
+            Bot.sendClassUpdateToSubscriber(3, selectedClass, userId)
+        }, 500)
+    });
+}
+
+function unsubscribeClass(selectedClass, userId, ctx) {
+    //reset final action
+    classSelectionFinalAction = '';
+    Bot.removeLineFromTextFile(subscriberPath, `${userId} ${selectedClass}`);
+    ctx.reply('Alles klar, ich sende dir keine Vertretungspläne für die ' + selectedClass + ' mehr 🙁')
+}
 
 //unsubscribe from class
 bot.command(unsubscribeClassCommand, ctx => {
+    logUserAction(ctx, unsubscribeClassCommand)
 
+    classSelectionFinalAction = 'unsubscribeClass';
+    createAndSendClassLevelList(ctx['update']['message']['from']['id'])
 });
+
 //send plan 1 from storage
 bot.command(plan1Command, (ctx) => {
+    logUserAction(ctx, plan1Command)
+
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], true);
 });
 
 //send plan 2 from storage
 bot.command(plan2Command, (ctx) => {
+    logUserAction(ctx, plan2Command)
     Bot.sendPdfPlanToUser(ctx['update']['message']['from']['id'], false);
 });
 
 //send class info when registered
 bot.command(classCommand, (ctx) => {
+    logUserAction(ctx, classCommand)
     if (fs.existsSync(subscriberPath)) {
         let count = 0;
         Bot.readFileToArray(subscriberPath).then(arr => {
@@ -149,6 +259,10 @@ bot.command(classCommand, (ctx) => {
         ctx.reply('Du hast keine Klasse Aboniert.');
         sendSubscribeClassTutorial(ctx);
     }
+});
+
+bot.on('text', ctx => {
+    logUserAction(ctx, `unknown command: '${ctx['update']['message']['text']}'`);
 });
 
 function sendWelcome(ctx) {
@@ -330,7 +444,7 @@ class Bot {
                     classes: allClasses,
                     text: text
                 };
-                // console.log(obj);
+                // console.logUserAction(obj);
                 fs.writeFileSync((today ? jsonOnePath : jsonTwoPath), JSON.stringify(obj), 'binary');
                 res(obj);
             });
@@ -486,15 +600,19 @@ class Bot {
             }
             let document = data.split('\n');
             const index = document.indexOf(`${remove}`);
-            document.splice(index,1);
-            document = document.join('\n');
-            fs.writeFile(filename, document,()=>{});
+            if (index != -1) {
+                document.splice(index, 1);
+                document = document.join('\n');
+                fs.writeFile(filename, document, () => {
+                });
+            }
         });
     }
 
     private static startBot() {
         console.log('Cron gestartet');
         new CronJob('0,15,30,45 7-8,16-18 * * *', () => {
+            log('CronJob started')
             console.log('Starte CronJob');
             Bot.triggerPlanUpdate().then(update => {
                 Bot.triggerSendAllUpdates(update);
