@@ -14,7 +14,6 @@ let subscriberPath = './subscriber.txt';
 
 bot.start((ctx) => {
 
-    Bot.parsePDFToJson(true);
 });
 
 bot.help((ctx) => {
@@ -26,17 +25,15 @@ bot.help((ctx) => {
 
 //check if new plans are online and send updated plan(s)
 bot.command('update', (ctx) => {
-
     Bot.updatePlan().then((update) => {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
-            Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
         }
         if (update == 3 || update == 1) {
-            Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
         }
     });
-
 });
 
 bot.command('subscribe', ctx => {
@@ -75,12 +72,12 @@ bot.command('unsubscribe', ctx => {
 
 //send plan 1 from storage
 bot.command('1', (ctx) => {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
 });
 
 //send plan 2 from storage
 bot.command('2', (ctx) => {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
 });
 
 bot.launch();
@@ -120,7 +117,7 @@ class Bot {
                         //make multi classes to single classes => 5ab -> 5a,5b
                         match.forEach(m => {
                             //if class number has multiple class letters
-                            let classes = m;
+                            let classes = [m];
                             if (m.match(/([56789]|[1][0123])[a-z]{2,}/)) {
                                 let classNumber = m.match(/([56789]|[1][0123])/)[0];
                                 let classLetters = m.match(/[a-z]/g);
@@ -172,7 +169,7 @@ class Bot {
                     classes: allClasses,
                     text: text
                 };
-                console.log(obj);
+                // console.log(obj);
                 fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
                 res(obj);
             });
@@ -200,7 +197,7 @@ class Bot {
                 if (!error && response.statusCode === 200) {
                     let file = (today ? 1 : 2) + '.pdf';
                     fs.writeFileSync(file, body, 'binary');
-                    let filesize = Bot.getFilesizeInBytes(file);
+                    let filesize = Bot.getFileSizeInBytes(file);
 
                     if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
                         console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
@@ -224,7 +221,7 @@ class Bot {
      * get filesize in bytes
      * @param filename
      */
-    static getFilesizeInBytes(filename): number {
+    static getFileSizeInBytes(filename): number {
         if (!fs.existsSync(filename)) {
             return 0;
         }
@@ -237,7 +234,7 @@ class Bot {
      * @param {number} chatId
      * @param today
      */
-    static sendPlan(chatId: string, today: boolean) {
+    static sendPdfPlan(chatId: string, today: boolean) {
         try {
             if (fs.existsSync(__dirname + '/' + (today ? 1 : 2) + '.pdf')) {
                 bot.telegram.sendDocument(chatId, {
@@ -293,8 +290,68 @@ class Bot {
 
     }
 
-    static sendUpdates(planAsJson) {
+    static sendUpdates(update: number) {
+        Bot.updateGlobal(update);
+        Bot.updateClass(update);
+    }
 
+    /**
+     * send updated plans to user
+     * @param update
+     */
+    static updateGlobal(update: number) {
+        Bot.readFileToArray(userFilePath).then(arr => {
+            arr.forEach((chatId => {
+                if (update == 3 || update == 2) {
+                    Bot.sendPdfPlan(chatId, false);
+                }
+                if (update == 3 || update == 1) {
+                    Bot.sendPdfPlan(chatId, true);
+                }
+            }))
+        })
+    }
+
+    /**
+     * send updated classes to subscriber
+     * @param update
+     */
+    static updateClass(update: number) {
+        Bot.readFileToArray(subscriberPath).then(arr => {
+            arr.forEach((user => {
+                let subscribedClass = user.split(' ')[1];
+                let userId = user.split(' ')[0];
+                let data = [];
+                if (update == 3 || update == 2) {
+                    data = data.concat(Bot.formatClassData(false, subscribedClass));
+                }
+                if (update == 3 || update == 1) {
+                    data = data.concat(Bot.formatClassData(true, subscribedClass));
+                }
+                if (data) {
+                    data.forEach(x => {
+                        if (x)
+                            bot.telegram.sendMessage(userId, x);
+                    })
+                }
+            }))
+        })
+    }
+
+    static formatClassData(today: boolean, subscribedClass: string) {
+        let rawdata = fs.readFileSync(__dirname + '/' + (today ? 1 : 2) + '.json');
+        let plan = JSON.parse(rawdata);
+        if (plan.classes.includes(subscribedClass)) {
+            let data = [];
+            plan.text.forEach(x => {
+                if (x.class.includes(subscribedClass)) {
+                    data.push(`${today ? 'Heute' : 'Morgen'} ${subscribedClass}: Stunde:${x.hour} Fach:${x.lesson} Raum:${x.room} Art:${x.type} Text:${x.more}`)
+                }
+            });
+            return data;
+        } else {
+            return null;
+        }
     }
 
     private static startBot() {
@@ -302,17 +359,7 @@ class Bot {
         new CronJob('0,15,30,45 7-8,16-18 * * *', () => {
             console.log('Starte CronJob');
             Bot.updatePlan().then(update => {
-                Bot.readFileToArray('./user.txt').then(arr => {
-                    arr.forEach((chatId => {
-                        if (update == 3 || update == 2) {
-                            Bot.sendPlan(chatId, false);
-                        }
-                        if (update == 3 || update == 1) {
-                            Bot.sendPlan(chatId, true);
-                        }
-                    }))
-                })
-
+                Bot.sendUpdates(update);
             })
         }, () => {
         }, true, 'Europe/Berlin');

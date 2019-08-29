@@ -46,7 +46,6 @@ var bot = new nodeBot("667639490:AAHDzeKbWi5kWM5vjZHqQ24ZBhc9q15WgTo");
 var userFilePath = './user.txt';
 var subscriberPath = './subscriber.txt';
 bot.start(function (ctx) {
-    Bot.parsePDFToJson(true);
 });
 bot.help(function (ctx) {
     ctx.reply('Der Bot hat dich gespeichert und sendet dir nun automatisch die aktuellsten Vertretungspläne zu.');
@@ -59,10 +58,10 @@ bot.command('update', function (ctx) {
     Bot.updatePlan().then(function (update) {
         ctx.reply(update ? 'Vertretungspläne geupdatet' : 'Vertretungspläne bereits aktuell');
         if (update == 3 || update == 2) {
-            Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
         }
         if (update == 3 || update == 1) {
-            Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+            Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
         }
     });
 });
@@ -101,11 +100,11 @@ bot.command('unsubscribe', function (ctx) {
 });
 //send plan 1 from storage
 bot.command('1', function (ctx) {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], true);
+    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], true);
 });
 //send plan 2 from storage
 bot.command('2', function (ctx) {
-    Bot.sendPlan(ctx['update']['message']['from']['id'], false);
+    Bot.sendPdfPlan(ctx['update']['message']['from']['id'], false);
 });
 bot.launch();
 var Bot = /** @class */ (function () {
@@ -137,7 +136,7 @@ var Bot = /** @class */ (function () {
                         //make multi classes to single classes => 5ab -> 5a,5b
                         match.forEach(function (m) {
                             //if class number has multiple class letters
-                            var classes = m;
+                            var classes = [m];
                             if (m.match(/([56789]|[1][0123])[a-z]{2,}/)) {
                                 var classNumber_1 = m.match(/([56789]|[1][0123])/)[0];
                                 var classLetters = m.match(/[a-z]/g);
@@ -181,7 +180,7 @@ var Bot = /** @class */ (function () {
                     classes: allClasses,
                     text: text
                 };
-                console.log(obj);
+                // console.log(obj);
                 fs.writeFileSync((today ? 1 : 2) + '.json', JSON.stringify(obj), 'binary');
                 res(obj);
             });
@@ -208,7 +207,7 @@ var Bot = /** @class */ (function () {
                 if (!error && response.statusCode === 200) {
                     var file = (today ? 1 : 2) + '.pdf';
                     fs.writeFileSync(file, body, 'binary');
-                    var filesize = Bot.getFilesizeInBytes(file);
+                    var filesize = Bot.getFileSizeInBytes(file);
                     if (fs.existsSync(file) && ((today && Bot.filesizeToday == filesize) || (!today && Bot.filezizeTomorow == filesize))) {
                         console.log('Datei wurde nicht aktuallisiert (bereits vorhanden)');
                         res(false);
@@ -230,7 +229,7 @@ var Bot = /** @class */ (function () {
      * get filesize in bytes
      * @param filename
      */
-    Bot.getFilesizeInBytes = function (filename) {
+    Bot.getFileSizeInBytes = function (filename) {
         if (!fs.existsSync(filename)) {
             return 0;
         }
@@ -242,7 +241,7 @@ var Bot = /** @class */ (function () {
      * @param {number} chatId
      * @param today
      */
-    Bot.sendPlan = function (chatId, today) {
+    Bot.sendPdfPlan = function (chatId, today) {
         try {
             if (fs.existsSync(__dirname + '/' + (today ? 1 : 2) + '.pdf')) {
                 bot.telegram.sendDocument(chatId, {
@@ -306,23 +305,73 @@ var Bot = /** @class */ (function () {
             }
         });
     };
-    Bot.sendUpdates = function (planAsJson) {
+    Bot.sendUpdates = function (update) {
+        Bot.updateGlobal(update);
+        Bot.updateClass(update);
+    };
+    /**
+     * send updated plans to user
+     * @param update
+     */
+    Bot.updateGlobal = function (update) {
+        Bot.readFileToArray(userFilePath).then(function (arr) {
+            arr.forEach((function (chatId) {
+                if (update == 3 || update == 2) {
+                    Bot.sendPdfPlan(chatId, false);
+                }
+                if (update == 3 || update == 1) {
+                    Bot.sendPdfPlan(chatId, true);
+                }
+            }));
+        });
+    };
+    /**
+     * send updated classes to subscriber
+     * @param update
+     */
+    Bot.updateClass = function (update) {
+        Bot.readFileToArray(subscriberPath).then(function (arr) {
+            arr.forEach((function (user) {
+                var subscribedClass = user.split(' ')[1];
+                var userId = user.split(' ')[0];
+                var data = [];
+                if (update == 3 || update == 2) {
+                    data = data.concat(Bot.formatClassData(false, subscribedClass));
+                }
+                if (update == 3 || update == 1) {
+                    data = data.concat(Bot.formatClassData(true, subscribedClass));
+                }
+                if (data) {
+                    data.forEach(function (x) {
+                        if (x)
+                            bot.telegram.sendMessage(userId, x);
+                    });
+                }
+            }));
+        });
+    };
+    Bot.formatClassData = function (today, subscribedClass) {
+        var rawdata = fs.readFileSync(__dirname + '/' + (today ? 1 : 2) + '.json');
+        var plan = JSON.parse(rawdata);
+        if (plan.classes.includes(subscribedClass)) {
+            var data_1 = [];
+            plan.text.forEach(function (x) {
+                if (x.class.includes(subscribedClass)) {
+                    data_1.push((today ? 'Heute' : 'Morgen') + " " + subscribedClass + ": Stunde:" + x.hour + " Fach:" + x.lesson + " Raum:" + x.room + " Art:" + x.type + " Text:" + x.more);
+                }
+            });
+            return data_1;
+        }
+        else {
+            return null;
+        }
     };
     Bot.startBot = function () {
         console.log('Cron gestartet');
         new cron_1.CronJob('0,15,30,45 7-8,16-18 * * *', function () {
             console.log('Starte CronJob');
             Bot.updatePlan().then(function (update) {
-                Bot.readFileToArray('./user.txt').then(function (arr) {
-                    arr.forEach((function (chatId) {
-                        if (update == 3 || update == 2) {
-                            Bot.sendPlan(chatId, false);
-                        }
-                        if (update == 3 || update == 1) {
-                            Bot.sendPlan(chatId, true);
-                        }
-                    }));
-                });
+                Bot.sendUpdates(update);
             });
         }, function () {
         }, true, 'Europe/Berlin');
