@@ -1,5 +1,5 @@
 #FROM node:11
-FROM arm32v7/node
+FROM node
 
 WORKDIR /usr/src/app
 
