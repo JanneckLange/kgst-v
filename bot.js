@@ -443,7 +443,7 @@ var Bot = /** @class */ (function () {
         var classReg = /([56789]|[1][0123])[a-z]+/g;
         var hourReg = /\d{1,2}( - \d{1,2})*/;
         var kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
-        var lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
+        var lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'Hosp0.5', 'WiPo', 'KGS', 'WPK2-ITM', 'WPK2-GEO', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'AG DSP', 'Ch-1', 'Ch', 'VB', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
         var roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
         var removeReg = /\s\(\w{2,3}\)/g;
         var dateReg = /(?<=Online-Ausgabe\s\s)\d{1,2}.\d{1,2}.\s\/\s\w+/;
@@ -469,13 +469,29 @@ var Bot = /** @class */ (function () {
                                 classes = classLetters.map(function (x) { return classNumber_1 + x; });
                             }
                             allClasses.push(classes);
-                            var hour = el.slice(m.length, el.length).match(hourReg)[0];
-                            var lesson = el.match(kgsReg);
-                            lesson = lesson ? lesson[0] : lessons.find(function (x) {
-                                return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x);
-                            });
-                            var type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
-                            var room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+                            var hour;
+                            var lesson;
+                            var type;
+                            var room;
+                            var more;
+                            if (m.length === el.length) {
+                                hour = '?';
+                            }
+                            else {
+                                hour = el.slice(m.length, el.length).match(hourReg)[0];
+                                lesson = el.match(kgsReg);
+                                lesson = lesson ? lesson[0] : lessons.find(function (x) {
+                                    return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x);
+                                });
+                            }
+                            if (lesson == undefined) {
+                                lesson = 'unbekannt';
+                            }
+                            else {
+                                type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
+                                room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+                                more = el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length);
+                            }
                             text.push({
                                 class: classes,
                                 //5abcdef6KGS_5a_FuFEntfall--- matcht doppelt? 5abcdef und 5a
@@ -484,7 +500,7 @@ var Bot = /** @class */ (function () {
                                 lesson: lesson,
                                 room: room,
                                 type: type,
-                                more: el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length),
+                                more: more,
                                 full: el
                             });
                         });
@@ -683,3 +699,4 @@ var Bot = /** @class */ (function () {
     return Bot;
 }());
 exports.Bot = Bot;
+//# sourceMappingURL=bot.js.map

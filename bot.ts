@@ -374,7 +374,7 @@ class Bot {
         const classReg = /([56789]|[1][0123])[a-z]+/g;
         const hourReg = /\d{1,2}( - \d{1,2})*/;
         const kgsReg = /KGS_[0-9]*[a-z]_FuF[0-9]?/;
-        const lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0', 'WiPo', 'WPK2-ITM', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL', 'Ch-1', 'Ch', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
+        const lessons = ['WiPo', 'KR', 'ELZ', 'LRS', 'TGT', 'M-E2', 'DB-ProTab', 'ProTab', 'Hosp0','Hosp0.5', 'WiPo','KGS', 'WPK2-ITM','WPK2-GEO', 'WPK1-TEC1', 'WPK1-TEC3', 'WPK1-WL', 'WPK1-WL','AG DSP', 'Ch-1', 'Ch', 'VB', 'DAZ-Aufbau', 'DAZ', 'Ku-2', 'Ku', 'Bio', 'Phy', 'Rel', 'Phi', 'NaWi', 'Mu', 'DB-WK', 'Wk', 'DB-M', 'Sp', 'DB-E', 'D', 'M', 'E']; // todo DB-XXX / KGS_5a_FuF
         const roomReg = /[A-Z]\d{3,}(\/\d{3,})?|---|H \(alt\) 3/;
         const removeReg = /\s\(\w{2,3}\)/g;
         const dateReg = /(?<=Online-Ausgabe\s\s)\d{1,2}.\d{1,2}.\s\/\s\w+/;
@@ -402,15 +402,29 @@ class Bot {
                                 classes = classLetters.map(x => classNumber + x);
                             }
                             allClasses.push(classes);
-                            let hour = el.slice(m.length, el.length).match(hourReg)[0];
+                            let hour;
+                            let lesson;
+                            let type;
+                            let room;
+                            let more;
 
-                            let lesson = el.match(kgsReg);
-                            lesson = lesson ? lesson[0] : lessons.find(x => {
-                                return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x)
-                            });
+                            if (m.length === el.length) {
+                                hour = '?';
+                            } else {
+                                hour = el.slice(m.length, el.length).match(hourReg)[0];
+                                lesson = el.match(kgsReg);
+                                lesson = lesson ? lesson[0] : lessons.find(x => {
+                                    return el.slice(0, el.match(roomReg) ? el.match(roomReg).index : el.length).includes(x)
+                                });
+                            }
 
-                            let type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
-                            let room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+                            if (lesson == undefined) {
+                                lesson = 'unbekannt'
+                            } else {
+                                type = el.slice(m.length + hour.length + lesson.length, el.match(roomReg) ? el.match(roomReg).index : el.length);
+                                room = el.match(roomReg) ? el.match(roomReg)[0] : '';
+                                more = el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length);
+                            }
 
 
                             text.push({
@@ -421,7 +435,7 @@ class Bot {
                                 lesson: lesson,//kann noch zu fehlern führen, dann in array eintragen
                                 room: room,// kann noch zu fehlern führen, bei sport oder doppelräumen
                                 type: type,
-                                more: el.slice(m.length + hour.length + lesson.length + type.length + room.length, el.length),
+                                more: more,
                                 full: el
                             });
 
