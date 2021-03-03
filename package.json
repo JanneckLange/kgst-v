@@ -14,7 +14,7 @@
     "moment": "^2.24.0",
     "morgan": "~1.9.1",
     "pdf-parse": "^1.1.1",
-    "pug": "^2.0.4",
+    "pug": "^3.0.1",
     "request": "^2.88.0",
     "telegraf": "^3.32.0",
     "telegram-node-bot": "^4.0.5"
